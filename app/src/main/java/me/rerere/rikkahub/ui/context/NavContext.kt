@@ -3,9 +3,18 @@ package me.rerere.rikkahub.ui.context
 import androidx.compose.runtime.compositionLocalOf
 import androidx.navigation3.runtime.NavKey
 import me.rerere.rikkahub.Screen
+import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
 
-class Navigator(private val backStack: MutableList<NavKey>) {
+class Navigator(
+    private val backStack: MutableList<NavKey>,
+    private val childModePolicy: BrainyPalChildModePolicy = BrainyPalChildModePolicy.disabled(),
+) {
     fun navigate(screen: Screen, builder: NavigateOptionsBuilder.() -> Unit = {}) {
+        if (!childModePolicy.isScreenAllowed(screen)) {
+            navigateToChildSafeFallback()
+            return
+        }
+
         val options = NavigateOptionsBuilder().apply(builder)
 
         options.popUpToScreen?.let { target ->
@@ -26,12 +35,24 @@ class Navigator(private val backStack: MutableList<NavKey>) {
     }
 
     fun clearAndNavigate(screen: Screen) {
+        if (!childModePolicy.isScreenAllowed(screen)) {
+            backStack.clear()
+            backStack.add(Screen.Setting)
+            return
+        }
+
         backStack.clear()
         backStack.add(screen)
     }
 
     fun popBackStack() {
         if (backStack.size > 1) backStack.removeLastOrNull()
+    }
+
+    private fun navigateToChildSafeFallback() {
+        if (backStack.lastOrNull() != Screen.Setting) {
+            backStack.add(Screen.Setting)
+        }
     }
 }
 

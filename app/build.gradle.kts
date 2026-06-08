@@ -25,6 +25,7 @@ android {
         versionName = "2.2.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("Boolean", "BRAINYPAL_CHILD_MODE", "true")
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")

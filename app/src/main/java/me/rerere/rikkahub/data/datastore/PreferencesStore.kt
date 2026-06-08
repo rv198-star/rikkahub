@@ -22,6 +22,8 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.AppScope
+import me.rerere.rikkahub.brainypal.BrainyPalChildConnectionConfig
+import me.rerere.rikkahub.brainypal.BrainyPalManagementPin
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
@@ -149,6 +151,10 @@ class SettingsStore(
 
         // 赞助提醒
         val SPONSOR_ALERT_DISMISSED_AT = intPreferencesKey("sponsor_alert_dismissed_at")
+
+        // BrainyPal child mode
+        val BRAINYPAL_CHILD_CONNECTION = stringPreferencesKey("brainypal_child_connection")
+        val BRAINYPAL_MANAGEMENT_PIN = stringPreferencesKey("brainypal_management_pin")
     }
 
     private val dataStore = context.settingsStore
@@ -242,6 +248,12 @@ class SettingsStore(
                 } ?: BackupReminderConfig(),
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
                 sponsorAlertDismissedAt = preferences[SPONSOR_ALERT_DISMISSED_AT] ?: 0,
+                brainyPalChildConnection = preferences[BRAINYPAL_CHILD_CONNECTION]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: BrainyPalChildConnectionConfig(),
+                brainyPalManagementPin = preferences[BRAINYPAL_MANAGEMENT_PIN]?.let {
+                    JsonInstant.decodeFromString(it)
+                },
             )
         }
         .map {
@@ -410,6 +422,10 @@ class SettingsStore(
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             preferences[LAUNCH_COUNT] = settings.launchCount
             preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
+            preferences[BRAINYPAL_CHILD_CONNECTION] = JsonInstant.encodeToString(settings.brainyPalChildConnection)
+            settings.brainyPalManagementPin?.let {
+                preferences[BRAINYPAL_MANAGEMENT_PIN] = JsonInstant.encodeToString(it)
+            } ?: preferences.remove(BRAINYPAL_MANAGEMENT_PIN)
         }
     }
 
@@ -540,6 +556,8 @@ data class Settings(
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     val launchCount: Int = 0,
     val sponsorAlertDismissedAt: Int = 0,
+    val brainyPalChildConnection: BrainyPalChildConnectionConfig = BrainyPalChildConnectionConfig(),
+    val brainyPalManagementPin: BrainyPalManagementPin? = null,
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储

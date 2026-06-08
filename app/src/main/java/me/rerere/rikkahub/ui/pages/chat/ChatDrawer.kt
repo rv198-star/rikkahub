@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.InLove
@@ -61,6 +62,7 @@ import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Sparkles
 import me.rerere.hugeicons.stroke.TransactionHistory
+import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
@@ -96,6 +98,7 @@ fun ChatDrawerContent(
     val context = LocalContext.current
     val isPlayStore = rememberIsPlayStoreVersion()
     val repo = koinInject<ConversationRepository>()
+    val childMode = BuildConfig.BRAINYPAL_CHILD_MODE
 
     val activity = context as ComponentActivity
     val drawerVm: ChatDrawerVM = koinViewModel(viewModelStoreOwner = activity)
@@ -147,14 +150,16 @@ fun ChatDrawerContent(
             modifier = Modifier.padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (settings.displaySetting.showUpdates && !isPlayStore) {
+            if (!childMode && settings.displaySetting.showUpdates && !isPlayStore) {
                 UpdateCard(vm)
             }
 
-            BackupReminderCard(
-                settings = settings,
-                onClick = { navController.navigate(Screen.Backup) },
-            )
+            if (!childMode) {
+                BackupReminderCard(
+                    settings = settings,
+                    onClick = { navController.navigate(Screen.Backup) },
+                )
+            }
 
             // 用户头像和昵称自定义区域
             Row(
@@ -213,64 +218,72 @@ fun ChatDrawerContent(
                 }
             }
 
-            DrawerActions(navController = navController)
+            if (!childMode) {
+                DrawerActions(navController = navController)
+            }
 
-            ConversationList(
-                current = current,
-                conversations = conversations,
-                conversationJobs = conversationJobs.keys,
-                listState = conversationListState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                onClick = {
-                    navigateToChatPage(navController, it.id)
-                },
-                onRegenerateTitle = {
-                    vm.generateTitle(it, true)
-                },
-                onDelete = {
-                    vm.deleteConversation(it)
-                    // Refresh the conversation list to immediately remove the deleted item
-                    // This fixes the issue where deleted conversations sometimes remain visible
-                    // until manually clicked (issue #747)
-                    conversations.refresh()
-                    if (it.id == current.id) {
-                        navigateToChatPage(navController)
+            if (childMode) {
+                Spacer(Modifier.weight(1f))
+            } else {
+                ConversationList(
+                    current = current,
+                    conversations = conversations,
+                    conversationJobs = conversationJobs.keys,
+                    listState = conversationListState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    onClick = {
+                        navigateToChatPage(navController, it.id)
+                    },
+                    onRegenerateTitle = {
+                        vm.generateTitle(it, true)
+                    },
+                    onDelete = {
+                        vm.deleteConversation(it)
+                        // Refresh the conversation list to immediately remove the deleted item
+                        // This fixes the issue where deleted conversations sometimes remain visible
+                        // until manually clicked (issue #747)
+                        conversations.refresh()
+                        if (it.id == current.id) {
+                            navigateToChatPage(navController)
+                        }
+                    },
+                    onPin = {
+                        vm.updatePinnedStatus(it)
+                    },
+                    onMoveToAssistant = {
+                        conversationToMove = it
+                        showMoveToAssistantSheet = true
                     }
-                },
-                onPin = {
-                    vm.updatePinnedStatus(it)
-                },
-                onMoveToAssistant = {
-                    conversationToMove = it
-                    showMoveToAssistantSheet = true
-                }
-            )
+                )
+            }
 
             // 助手选择器
-            AssistantPicker(
-                settings = settings,
-                onUpdateSettings = {
-                    vm.updateSettings(it)
-                    scope.launch {
-                        val id = if (context.readBooleanPreference("create_new_conversation_on_start", true)) {
-                            Uuid.random()
-                        } else {
-                            repo.getConversationsOfAssistant(it.assistantId)
-                                .first()
-                                .firstOrNull()
-                                ?.id ?: Uuid.random()
+            if (!childMode) {
+                AssistantPicker(
+                    settings = settings,
+                    onUpdateSettings = {
+                        vm.updateSettings(it)
+                        scope.launch {
+                            val id = if (context.readBooleanPreference("create_new_conversation_on_start", true)) {
+                                Uuid.random()
+                            } else {
+                                repo.getConversationsOfAssistant(it.assistantId)
+                                    .first()
+                                    .firstOrNull()
+                                    ?.id ?: Uuid.random()
+                            }
+                            navigateToChatPage(navigator = navController, chatId = id)
                         }
-                        navigateToChatPage(navigator = navController, chatId = id)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    onClickSetting = {
+                        val currentAssistantId = settings.assistantId
+                        navController.navigate(Screen.AssistantDetail(id = currentAssistantId.toString()))
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                onClickSetting = {
-                    val currentAssistantId = settings.assistantId
-                    navController.navigate(Screen.AssistantDetail(id = currentAssistantId.toString()))
-                }
-            )
+                )
+            }
 
             Row(
                 horizontalArrangement = Arrangement.SpaceAround,
@@ -279,79 +292,93 @@ fun ChatDrawerContent(
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)
             ) {
-                DrawerAction(
-                    icon = {
-                        Icon(
-                            imageVector = HugeIcons.LookTop,
-                            contentDescription = stringResource(R.string.assistant_page_title)
-                        )
-                    },
-                    label = {
-                        Text(stringResource(R.string.assistant_page_title))
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Assistant)
-                    },
-                )
-
-                Box {
+                if (childMode) {
                     DrawerAction(
                         icon = {
-                            Icon(HugeIcons.Sparkles, "Menu")
+                            Icon(HugeIcons.Book03, null)
                         },
                         label = {
-                            Text(stringResource(R.string.menu))
+                            Text("今日练习")
                         },
                         onClick = {
-                            showMenuPopup = true
+                            navController.navigate(Screen.BrainyPalPractice)
                         },
                     )
-                    DropdownMenu(
-                        expanded = showMenuPopup,
-                        onDismissRequest = { showMenuPopup = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.chat_page_menu_ai_translator)) },
-                            leadingIcon = { Icon(HugeIcons.LanguageCircle, null) },
+                } else {
+                    DrawerAction(
+                        icon = {
+                            Icon(
+                                imageVector = HugeIcons.LookTop,
+                                contentDescription = stringResource(R.string.assistant_page_title)
+                            )
+                        },
+                        label = {
+                            Text(stringResource(R.string.assistant_page_title))
+                        },
+                        onClick = {
+                            navController.navigate(Screen.Assistant)
+                        },
+                    )
+
+                    Box {
+                        DrawerAction(
+                            icon = {
+                                Icon(HugeIcons.Sparkles, "Menu")
+                            },
+                            label = {
+                                Text(stringResource(R.string.menu))
+                            },
                             onClick = {
-                                showMenuPopup = false
-                                navController.navigate(Screen.Translator)
-                            }
+                                showMenuPopup = true
+                            },
                         )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.chat_page_menu_image_generation)) },
-                            leadingIcon = { Icon(HugeIcons.Image02, null) },
-                            onClick = {
-                                showMenuPopup = false
-                                navController.navigate(Screen.ImageGen)
-                            }
-                        )
+                        DropdownMenu(
+                            expanded = showMenuPopup,
+                            onDismissRequest = { showMenuPopup = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.chat_page_menu_ai_translator)) },
+                                leadingIcon = { Icon(HugeIcons.LanguageCircle, null) },
+                                onClick = {
+                                    showMenuPopup = false
+                                    navController.navigate(Screen.Translator)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.chat_page_menu_image_generation)) },
+                                leadingIcon = { Icon(HugeIcons.Image02, null) },
+                                onClick = {
+                                    showMenuPopup = false
+                                    navController.navigate(Screen.ImageGen)
+                                }
+                            )
+                        }
                     }
+
+                    DrawerAction(
+                        icon = {
+                            Icon(HugeIcons.InLove, stringResource(R.string.favorite_page_title))
+                        },
+                        label = {
+                            Text(stringResource(R.string.favorite_page_title))
+                        },
+                        onClick = {
+                            navController.navigate(Screen.Favorite)
+                        },
+                    )
+
+                    DrawerAction(
+                        icon = {
+                            Icon(HugeIcons.ChartColumn, "统计数据")
+                        },
+                        label = {
+                            Text("统计数据")
+                        },
+                        onClick = {
+                            navController.navigate(Screen.Stats)
+                        },
+                    )
                 }
-
-                DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.InLove, stringResource(R.string.favorite_page_title))
-                    },
-                    label = {
-                        Text(stringResource(R.string.favorite_page_title))
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Favorite)
-                    },
-                )
-
-                DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.ChartColumn, "统计数据")
-                    },
-                    label = {
-                        Text("统计数据")
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Stats)
-                    },
-                )
 
                 Spacer(Modifier.weight(1f))
 

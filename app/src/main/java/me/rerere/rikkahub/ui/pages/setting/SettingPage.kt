@@ -60,8 +60,10 @@ import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share04
 import me.rerere.hugeicons.stroke.Sun01
 import me.rerere.hugeicons.stroke.WavingHand01
+import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
+import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
 import me.rerere.rikkahub.data.datastore.isNotConfigured
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.ui.components.nav.BackButton
@@ -86,8 +88,14 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val navController = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val filesManager: FilesManager = koinInject()
+    val childModePolicy = if (BuildConfig.BRAINYPAL_CHILD_MODE) {
+        BrainyPalChildModePolicy.enabled()
+    } else {
+        BrainyPalChildModePolicy.disabled()
+    }
+    val childMode = childModePolicy.active
 
-    if (settings.launchCount > 100 && (settings.launchCount - settings.sponsorAlertDismissedAt) >= 50) {
+    if (!childMode && settings.launchCount > 100 && (settings.launchCount - settings.sponsorAlertDismissedAt) >= 50) {
         AlertDialog(
             onDismissRequest = {
                 vm.updateSettings(settings.copy(sponsorAlertDismissedAt = settings.launchCount))
@@ -124,7 +132,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 },
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    if(settings.developerMode) {
+                    if(!childMode && settings.developerMode) {
                         IconButton(
                             onClick = {
                                 navController.navigate(Screen.Developer)
@@ -145,7 +153,32 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             contentPadding = innerPadding + PaddingValues(8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            if (settings.isNotConfigured()) {
+            if (childMode) {
+                item("brainypalChild") {
+                    val configured = settings.brainyPalChildConnection.isConfigured()
+                    CardGroup(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        title = { Text("BrainyPal") },
+                    ) {
+                        item(
+                            onClick = { navController.navigate(Screen.BrainyPalPractice) },
+                            leadingContent = { Icon(HugeIcons.Book03, null) },
+                            supportingContent = {
+                                Text(if (configured) "查看今天的练习任务" else "先完成连接配置")
+                            },
+                            headlineContent = { Text("今日练习") },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.BrainyPalConnection) },
+                            leadingContent = { Icon(HugeIcons.ServerStack01, null) },
+                            supportingContent = {
+                                Text(settings.brainyPalChildConnection.baseUrl.ifBlank { "待配置" })
+                            },
+                            headlineContent = { Text("连接") },
+                        )
+                    }
+                }
+            } else if (settings.isNotConfigured()) {
                 item {
                     ProviderConfigWarningCard(navController)
                 }
@@ -195,97 +228,103 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences)) },
                     )
-                    item(
-                        onClick = { navController.navigate(Screen.Assistant) },
-                        leadingContent = { Icon(HugeIcons.LookTop, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_assistant_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_assistant)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.Extensions) },
-                        leadingContent = { Icon(HugeIcons.Package, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_extensions_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_extensions)) },
-                    )
+                    if (!childMode) {
+                        item(
+                            onClick = { navController.navigate(Screen.Assistant) },
+                            leadingContent = { Icon(HugeIcons.LookTop, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_assistant_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_assistant)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.Extensions) },
+                            leadingContent = { Icon(HugeIcons.Package, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_extensions_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_extensions)) },
+                        )
+                    }
                 }
             }
 
-            item("modelServices") {
-                CardGroup(
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    title = { Text(stringResource(R.string.setting_page_model_and_services)) },
-                ) {
-                    item(
-                        onClick = { navController.navigate(Screen.SettingModels) },
-                        leadingContent = { Icon(HugeIcons.AiMagic, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_default_model_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_default_model)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingProvider) },
-                        leadingContent = { Icon(HugeIcons.Brain02, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_providers_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_providers)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingSearch) },
-                        leadingContent = { Icon(HugeIcons.GlobalSearch, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_search_service_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_search_service)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingSpeech) },
-                        leadingContent = { Icon(HugeIcons.Megaphone01, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_tts_service_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_tts_service)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingMcp) },
-                        leadingContent = { Icon(HugeIcons.McpServer, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_mcp_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_mcp)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingWeb) },
-                        leadingContent = { Icon(HugeIcons.ServerStack01, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_web_server_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_web_server)) },
-                    )
+            if (!childMode) {
+                item("modelServices") {
+                    CardGroup(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        title = { Text(stringResource(R.string.setting_page_model_and_services)) },
+                    ) {
+                        item(
+                            onClick = { navController.navigate(Screen.SettingModels) },
+                            leadingContent = { Icon(HugeIcons.AiMagic, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_default_model_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_default_model)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.SettingProvider) },
+                            leadingContent = { Icon(HugeIcons.Brain02, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_providers_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_providers)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.SettingSearch) },
+                            leadingContent = { Icon(HugeIcons.GlobalSearch, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_search_service_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_search_service)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.SettingSpeech) },
+                            leadingContent = { Icon(HugeIcons.Megaphone01, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_tts_service_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_tts_service)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.SettingMcp) },
+                            leadingContent = { Icon(HugeIcons.McpServer, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_mcp_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_mcp)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.SettingWeb) },
+                            leadingContent = { Icon(HugeIcons.ServerStack01, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_web_server_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_web_server)) },
+                        )
+                    }
                 }
             }
 
-            item("dataSettings") {
-                val storageState by produceState(-1 to 0L) {
-                    value = filesManager.countChatFiles()
-                }
-                CardGroup(
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    title = { Text(stringResource(R.string.setting_page_data_settings)) },
-                ) {
-                    item(
-                        onClick = { navController.navigate(Screen.Backup) },
-                        leadingContent = { Icon(HugeIcons.Database02, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_data_backup_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_data_backup)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingFiles) },
-                        leadingContent = { Icon(HugeIcons.ImageUpload, null) },
-                        supportingContent = {
-                            if (storageState.first == -1) {
-                                Text(stringResource(R.string.calculating))
-                            } else {
-                                Text(
-                                    stringResource(
-                                        R.string.setting_page_chat_storage_desc,
-                                        storageState.first,
-                                        storageState.second / 1024 / 1024.0
+            if (!childMode) {
+                item("dataSettings") {
+                    val storageState by produceState(-1 to 0L) {
+                        value = filesManager.countChatFiles()
+                    }
+                    CardGroup(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        title = { Text(stringResource(R.string.setting_page_data_settings)) },
+                    ) {
+                        item(
+                            onClick = { navController.navigate(Screen.Backup) },
+                            leadingContent = { Icon(HugeIcons.Database02, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_data_backup_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_data_backup)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.SettingFiles) },
+                            leadingContent = { Icon(HugeIcons.ImageUpload, null) },
+                            supportingContent = {
+                                if (storageState.first == -1) {
+                                    Text(stringResource(R.string.calculating))
+                                } else {
+                                    Text(
+                                        stringResource(
+                                            R.string.setting_page_chat_storage_desc,
+                                            storageState.first,
+                                            storageState.second / 1024 / 1024.0
+                                        )
                                     )
-                                )
-                            }
-                        },
-                        headlineContent = { Text(stringResource(R.string.setting_page_chat_storage)) },
-                    )
+                                }
+                            },
+                            headlineContent = { Text(stringResource(R.string.setting_page_chat_storage)) },
+                        )
+                    }
                 }
             }
 
@@ -333,39 +372,41 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         },
                         headlineContent = { Text(stringResource(R.string.setting_page_about)) },
                     )
-                    item(
-                        onClick = { context.openUrl("https://docs.rikka-ai.com/docs/basic/get-started") },
-                        leadingContent = { Icon(HugeIcons.Book01, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_documentation_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_documentation)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.Log) },
-                        leadingContent = { Icon(HugeIcons.Bookshelf01, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_request_logs_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_request_logs)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingDonate) },
-                        leadingContent = { Icon(HugeIcons.InLove, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_donate_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_donate)) },
-                    )
-                    item(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_SEND)
-                            intent.type = "text/plain"
-                            intent.putExtra(Intent.EXTRA_TEXT, shareText)
-                            try {
-                                context.startActivity(Intent.createChooser(intent, share))
-                            } catch (e: ActivityNotFoundException) {
-                                Toast.makeText(context, noShareApp, Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        leadingContent = { Icon(HugeIcons.Share04, null) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_share_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_share)) },
-                    )
+                    if (!childMode) {
+                        item(
+                            onClick = { context.openUrl("https://docs.rikka-ai.com/docs/basic/get-started") },
+                            leadingContent = { Icon(HugeIcons.Book01, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_documentation_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_documentation)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.Log) },
+                            leadingContent = { Icon(HugeIcons.Bookshelf01, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_request_logs_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_request_logs)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.SettingDonate) },
+                            leadingContent = { Icon(HugeIcons.InLove, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_donate_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_donate)) },
+                        )
+                        item(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_SEND)
+                                intent.type = "text/plain"
+                                intent.putExtra(Intent.EXTRA_TEXT, shareText)
+                                try {
+                                    context.startActivity(Intent.createChooser(intent, share))
+                                } catch (e: ActivityNotFoundException) {
+                                    Toast.makeText(context, noShareApp, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            leadingContent = { Icon(HugeIcons.Share04, null) },
+                            supportingContent = { Text(stringResource(R.string.setting_page_share_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_page_share)) },
+                        )
+                    }
                 }
             }
         }
