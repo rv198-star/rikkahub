@@ -57,6 +57,7 @@ import com.dokar.sonner.rememberToasterState
 import kotlinx.serialization.Serializable
 import me.rerere.highlight.Highlighter
 import me.rerere.highlight.LocalHighlighter
+import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
 import me.rerere.rikkahub.data.db.MigrationState
@@ -85,6 +86,8 @@ import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantMemoryPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantPromptPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantRequestPage
 import me.rerere.rikkahub.ui.pages.backup.BackupPage
+import me.rerere.rikkahub.ui.pages.brainypal.BrainyPalConnectionPage
+import me.rerere.rikkahub.ui.pages.brainypal.BrainyPalPracticePage
 import me.rerere.rikkahub.ui.pages.chat.ChatPage
 import me.rerere.rikkahub.ui.pages.debug.DebugPage
 import me.rerere.rikkahub.ui.pages.developer.DeveloperPage
@@ -192,7 +195,10 @@ class RouteActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun ShareHandler(backStack: MutableList<NavKey>) {
+    private fun ShareHandler(
+        backStack: MutableList<NavKey>,
+        childModePolicy: BrainyPalChildModePolicy,
+    ) {
         val shareIntent = remember {
             Intent().apply {
                 action = intent?.action
@@ -207,12 +213,18 @@ class RouteActivity : ComponentActivity() {
                 Intent.ACTION_SEND -> {
                     val text = shareIntent.getStringExtra(Intent.EXTRA_TEXT) ?: ""
                     val imageUri = shareIntent.getStringExtra(Intent.EXTRA_STREAM)
-                    backStack.add(Screen.ShareHandler(text, imageUri))
+                    val screen = Screen.ShareHandler(text, imageUri)
+                    if (childModePolicy.isScreenAllowed(screen)) {
+                        backStack.add(screen)
+                    }
                 }
 
                 Intent.ACTION_PROCESS_TEXT -> {
                     val text = shareIntent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString() ?: ""
-                    backStack.add(Screen.ShareHandler(text, null))
+                    val screen = Screen.ShareHandler(text, null)
+                    if (childModePolicy.isScreenAllowed(screen)) {
+                        backStack.add(screen)
+                    }
                 }
             }
         }
@@ -228,6 +240,13 @@ class RouteActivity : ComponentActivity() {
     @Composable
     fun AppRoutes() {
         val toastState = rememberToasterState()
+        val childModePolicy = remember {
+            if (BuildConfig.BRAINYPAL_CHILD_MODE) {
+                BrainyPalChildModePolicy.enabled()
+            } else {
+                BrainyPalChildModePolicy.disabled()
+            }
+        }
         val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
         val tts = rememberCustomTtsState()
         val asr = rememberCustomAsrState()
@@ -255,11 +274,11 @@ class RouteActivity : ComponentActivity() {
         val backStack = rememberNavBackStack(startScreen)
         SideEffect { this@RouteActivity.navStack = backStack }
 
-        ShareHandler(backStack)
+        ShareHandler(backStack, childModePolicy)
 
         SharedTransitionLayout {
             CompositionLocalProvider(
-                LocalNavController provides Navigator(backStack),
+                LocalNavController provides Navigator(backStack, childModePolicy),
                 LocalSharedTransitionScope provides this,
                 LocalSettings provides settings,
                 LocalHighlighter provides highlighter,
@@ -314,6 +333,14 @@ class RouteActivity : ComponentActivity() {
                                     files = key.files.map { it.toUri() },
                                     nodeId = key.nodeId?.let { Uuid.parse(it) }
                                 )
+                            }
+
+                            entry<Screen.BrainyPalPractice> {
+                                BrainyPalPracticePage()
+                            }
+
+                            entry<Screen.BrainyPalConnection> {
+                                BrainyPalConnectionPage()
                             }
 
                             entry<Screen.ShareHandler> { key ->
@@ -554,6 +581,12 @@ sealed interface Screen : NavKey {
         val files: List<String> = emptyList(),
         val nodeId: String? = null
     ) : Screen
+
+    @Serializable
+    data object BrainyPalPractice : Screen
+
+    @Serializable
+    data object BrainyPalConnection : Screen
 
     @Serializable
     data class ShareHandler(val text: String, val streamUri: String? = null) : Screen
