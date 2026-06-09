@@ -167,6 +167,14 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         title = { Text("BrainyPal") },
                     ) {
                         item(
+                            onClick = { navController.navigate(Screen.BrainyPalHome) },
+                            leadingContent = { Icon(HugeIcons.Book03, null) },
+                            supportingContent = {
+                                Text("儿童侧原生工作台")
+                            },
+                            headlineContent = { Text("BrainyPal 首页") },
+                        )
+                        item(
                             onClick = { navController.navigate(Screen.BrainyPalPractice) },
                             leadingContent = { Icon(HugeIcons.Book03, null) },
                             supportingContent = {

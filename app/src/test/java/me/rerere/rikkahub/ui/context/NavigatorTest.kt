@@ -17,7 +17,7 @@ class NavigatorTest {
 
         navigator.navigate(Screen.SettingProvider)
 
-        assertEquals(listOf(Screen.Chat("chat-id"), Screen.Setting), backStack)
+        assertEquals(listOf(Screen.Chat("chat-id"), Screen.BrainyPalHome), backStack)
     }
 
     @Test
@@ -30,7 +30,22 @@ class NavigatorTest {
 
         navigator.clearAndNavigate(Screen.Developer)
 
-        assertEquals(listOf(Screen.Setting), backStack)
+        assertEquals(listOf(Screen.BrainyPalHome), backStack)
+    }
+
+    @Test
+    fun `child mode navigation keeps BrainyPal home as safe root`() {
+        val backStack = mutableListOf<NavKey>(Screen.BrainyPalHome)
+        val navigator = Navigator(
+            backStack = backStack,
+            childModePolicy = BrainyPalChildModePolicy.enabled(),
+        )
+
+        navigator.navigate(Screen.BrainyPalHome) {
+            launchSingleTop = true
+        }
+
+        assertEquals(listOf(Screen.BrainyPalHome), backStack)
     }
 
     @Test

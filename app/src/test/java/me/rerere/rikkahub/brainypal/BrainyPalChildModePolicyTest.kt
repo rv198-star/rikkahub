@@ -12,6 +12,7 @@ class BrainyPalChildModePolicyTest {
         val policy = BrainyPalChildModePolicy.enabled()
 
         assertTrue(policy.isScreenAllowed(Screen.Chat("chat-id")))
+        assertTrue(policy.isScreenAllowed(Screen.BrainyPalHome))
         assertTrue(policy.isScreenAllowed(Screen.Setting))
         assertTrue(policy.isScreenAllowed(Screen.BrainyPalPractice))
         assertTrue(policy.isScreenAllowed(Screen.BrainyPalConnection))
@@ -41,7 +42,7 @@ class BrainyPalChildModePolicyTest {
         val decision = BrainyPalChildModePolicy.enabled().evaluateScreen(Screen.SettingProvider)
 
         assertFalse(decision.allowed)
-        assertEquals(Screen.Setting, decision.fallbackScreen)
+        assertEquals(Screen.BrainyPalHome, decision.fallbackScreen)
         assertEquals(BrainyPalChildNavigationReason.CHILD_MODE_BLOCKED, decision.reason)
     }
 
@@ -73,7 +74,7 @@ class BrainyPalChildModePolicyTest {
     }
 
     @Test
-    fun `practice entry maps adapter base url to child page`() {
+    fun `practice entry maps configured child to native practice page`() {
         val entry = BrainyPalChildModePolicy.practiceEntry(
             BrainyPalChildConnectionConfig(
                 baseUrl = "http://192.168.1.20:8000/rikka/v1/",
@@ -82,13 +83,13 @@ class BrainyPalChildModePolicyTest {
         )
 
         assertTrue(entry.configured)
-        assertEquals("打开练习", entry.primaryLabel)
+        assertEquals("今日练习", entry.primaryLabel)
         assertEquals("打开今天的 BrainyPal 任务", entry.supportingText)
-        assertEquals(Screen.WebView(url = "http://192.168.1.20:8000/child"), entry.targetScreen)
+        assertEquals(Screen.BrainyPalPractice, entry.targetScreen)
     }
 
     @Test
-    fun `practice entry normalizes v1 and api suffixes`() {
+    fun `practice web url remains available only as legacy child MVP bridge`() {
         val v1Entry = BrainyPalChildModePolicy.practiceEntry(
             BrainyPalChildConnectionConfig(
                 baseUrl = "http://192.168.1.20:8000/v1",
@@ -102,8 +103,48 @@ class BrainyPalChildModePolicyTest {
             )
         )
 
-        assertEquals(Screen.WebView(url = "http://192.168.1.20:8000/child"), v1Entry.targetScreen)
-        assertEquals(Screen.WebView(url = "http://192.168.1.20:8000/child"), apiEntry.targetScreen)
+        assertEquals(Screen.BrainyPalPractice, v1Entry.targetScreen)
+        assertEquals(Screen.BrainyPalPractice, apiEntry.targetScreen)
+        assertEquals(
+            "http://192.168.1.20:8000/child",
+            BrainyPalChildModePolicy.practiceWebUrl(
+                BrainyPalChildConnectionConfig(
+                    baseUrl = "http://192.168.1.20:8000/rikka/v1",
+                    apiKey = "brainypal-local",
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `agent service root normalizes adapter and api suffixes`() {
+        assertEquals(
+            "http://192.168.1.20:8000",
+            BrainyPalChildModePolicy.agentServiceRootUrl(
+                BrainyPalChildConnectionConfig(
+                    baseUrl = "http://192.168.1.20:8000/rikka/v1/",
+                    apiKey = "brainypal-local",
+                )
+            )
+        )
+        assertEquals(
+            "http://192.168.1.20:8000",
+            BrainyPalChildModePolicy.agentServiceRootUrl(
+                BrainyPalChildConnectionConfig(
+                    baseUrl = "http://192.168.1.20:8000/v1",
+                    apiKey = "brainypal-local",
+                )
+            )
+        )
+        assertEquals(
+            "http://192.168.1.20:8000",
+            BrainyPalChildModePolicy.agentServiceRootUrl(
+                BrainyPalChildConnectionConfig(
+                    baseUrl = "http://192.168.1.20:8000/api/",
+                    apiKey = "brainypal-local",
+                )
+            )
+        )
     }
 
     @Test

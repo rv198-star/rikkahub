@@ -298,10 +298,10 @@ fun ChatDrawerContent(
                             Icon(HugeIcons.Book03, null)
                         },
                         label = {
-                            Text("今日练习")
+                            Text("BrainyPal")
                         },
                         onClick = {
-                            navController.navigate(Screen.BrainyPalPractice)
+                            navController.navigate(Screen.BrainyPalHome)
                         },
                     )
                 } else {

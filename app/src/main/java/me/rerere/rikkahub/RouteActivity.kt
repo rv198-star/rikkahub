@@ -87,6 +87,7 @@ import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantPromptPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantRequestPage
 import me.rerere.rikkahub.ui.pages.backup.BackupPage
 import me.rerere.rikkahub.ui.pages.brainypal.BrainyPalConnectionPage
+import me.rerere.rikkahub.ui.pages.brainypal.BrainyPalHomePage
 import me.rerere.rikkahub.ui.pages.brainypal.BrainyPalPracticePage
 import me.rerere.rikkahub.ui.pages.chat.ChatPage
 import me.rerere.rikkahub.ui.pages.debug.DebugPage
@@ -260,16 +261,20 @@ class RouteActivity : ComponentActivity() {
         }
         val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
-        val startScreen = Screen.Chat(
-            id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
-                Uuid.random().toString()
-            } else {
-                readStringPreference(
-                    "lastConversationId",
+        val startScreen = if (BuildConfig.BRAINYPAL_CHILD_MODE) {
+            Screen.BrainyPalHome
+        } else {
+            Screen.Chat(
+                id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
                     Uuid.random().toString()
-                ) ?: Uuid.random().toString()
-            }
-        )
+                } else {
+                    readStringPreference(
+                        "lastConversationId",
+                        Uuid.random().toString()
+                    ) ?: Uuid.random().toString()
+                }
+            )
+        }
 
         val backStack = rememberNavBackStack(startScreen)
         SideEffect { this@RouteActivity.navStack = backStack }
@@ -333,6 +338,10 @@ class RouteActivity : ComponentActivity() {
                                     files = key.files.map { it.toUri() },
                                     nodeId = key.nodeId?.let { Uuid.parse(it) }
                                 )
+                            }
+
+                            entry<Screen.BrainyPalHome> {
+                                BrainyPalHomePage()
                             }
 
                             entry<Screen.BrainyPalPractice> {
@@ -581,6 +590,9 @@ sealed interface Screen : NavKey {
         val files: List<String> = emptyList(),
         val nodeId: String? = null
     ) : Screen
+
+    @Serializable
+    data object BrainyPalHome : Screen
 
     @Serializable
     data object BrainyPalPractice : Screen

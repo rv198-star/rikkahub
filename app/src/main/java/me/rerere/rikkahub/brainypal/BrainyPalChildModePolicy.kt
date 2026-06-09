@@ -92,6 +92,7 @@ class BrainyPalChildModePolicy private constructor(
 
         val allowed = when (screen) {
             is Screen.Chat,
+            Screen.BrainyPalHome,
             Screen.Setting,
             Screen.BrainyPalPractice,
             Screen.BrainyPalConnection,
@@ -116,7 +117,7 @@ class BrainyPalChildModePolicy private constructor(
         }
         return BrainyPalChildNavigationDecision(
             allowed = false,
-            fallbackScreen = Screen.Setting,
+            fallbackScreen = Screen.BrainyPalHome,
             reason = BrainyPalChildNavigationReason.CHILD_MODE_BLOCKED,
         )
     }
@@ -155,13 +156,16 @@ class BrainyPalChildModePolicy private constructor(
         }
 
         fun practiceWebUrl(config: BrainyPalChildConnectionConfig): String {
+            return "${agentServiceRootUrl(config)}/child"
+        }
+
+        fun agentServiceRootUrl(config: BrainyPalChildConnectionConfig): String {
             val baseUrl = config.baseUrl.trim().removeSuffix("/")
-            val rootUrl = baseUrl
+            return baseUrl
                 .removeSuffix("/rikka/v1")
                 .removeSuffix("/v1")
                 .removeSuffix("/api")
                 .removeSuffix("/")
-            return "$rootUrl/child"
         }
 
         fun practiceEntry(config: BrainyPalChildConnectionConfig): BrainyPalPracticeEntry {
@@ -175,9 +179,9 @@ class BrainyPalChildModePolicy private constructor(
             }
             return BrainyPalPracticeEntry(
                 configured = true,
-                primaryLabel = "打开练习",
+                primaryLabel = "今日练习",
                 supportingText = "打开今天的 BrainyPal 任务",
-                targetScreen = Screen.WebView(url = practiceWebUrl(config)),
+                targetScreen = Screen.BrainyPalPractice,
             )
         }
 
