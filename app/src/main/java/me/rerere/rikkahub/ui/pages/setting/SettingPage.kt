@@ -156,6 +156,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             if (childMode) {
                 item("brainypalChild") {
                     val configured = settings.brainyPalChildConnection.isConfigured()
+                    val practiceEntry = BrainyPalChildModePolicy.practiceEntry(
+                        settings.brainyPalChildConnection
+                    )
+                    val connectionSummary = BrainyPalChildModePolicy.connectionSummary(
+                        settings.brainyPalChildConnection
+                    )
                     CardGroup(
                         modifier = Modifier.padding(horizontal = 8.dp),
                         title = { Text("BrainyPal") },
@@ -164,7 +170,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                             onClick = { navController.navigate(Screen.BrainyPalPractice) },
                             leadingContent = { Icon(HugeIcons.Book03, null) },
                             supportingContent = {
-                                Text(if (configured) "查看今天的练习任务" else "先完成连接配置")
+                                Text(practiceEntry.supportingText)
                             },
                             headlineContent = { Text("今日练习") },
                         )
@@ -172,7 +178,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                             onClick = { navController.navigate(Screen.BrainyPalConnection) },
                             leadingContent = { Icon(HugeIcons.ServerStack01, null) },
                             supportingContent = {
-                                Text(settings.brainyPalChildConnection.baseUrl.ifBlank { "待配置" })
+                                Text(if (configured) connectionSummary else "待家长配置")
                             },
                             headlineContent = { Text("连接") },
                         )

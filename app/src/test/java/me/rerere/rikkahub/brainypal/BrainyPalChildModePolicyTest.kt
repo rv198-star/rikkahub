@@ -37,6 +37,26 @@ class BrainyPalChildModePolicyTest {
     }
 
     @Test
+    fun `child navigation decision reports blocked fallback reason`() {
+        val decision = BrainyPalChildModePolicy.enabled().evaluateScreen(Screen.SettingProvider)
+
+        assertFalse(decision.allowed)
+        assertEquals(Screen.Setting, decision.fallbackScreen)
+        assertEquals(BrainyPalChildNavigationReason.CHILD_MODE_BLOCKED, decision.reason)
+    }
+
+    @Test
+    fun `child navigation decision allows BrainyPal child webview`() {
+        val decision = BrainyPalChildModePolicy.enabled().evaluateScreen(
+            Screen.WebView(url = "http://127.0.0.1:8000/child")
+        )
+
+        assertTrue(decision.allowed)
+        assertEquals(null, decision.fallbackScreen)
+        assertEquals(BrainyPalChildNavigationReason.ALLOWED, decision.reason)
+    }
+
+    @Test
     fun `child mode fixes BrainyPal provider and model`() {
         val config = BrainyPalChildConnectionConfig(
             baseUrl = "http://192.168.1.20:8000/rikka/v1",
@@ -50,6 +70,73 @@ class BrainyPalChildModePolicyTest {
         assertEquals("brainypal-local", provider.apiKey)
         assertEquals(listOf("brainypal-child"), provider.models.map { it.modelId })
         assertFalse(provider.models.single().abilities.any { it.name.lowercase().contains("tool") })
+    }
+
+    @Test
+    fun `practice entry maps adapter base url to child page`() {
+        val entry = BrainyPalChildModePolicy.practiceEntry(
+            BrainyPalChildConnectionConfig(
+                baseUrl = "http://192.168.1.20:8000/rikka/v1/",
+                apiKey = "brainypal-local",
+            )
+        )
+
+        assertTrue(entry.configured)
+        assertEquals("打开练习", entry.primaryLabel)
+        assertEquals("打开今天的 BrainyPal 任务", entry.supportingText)
+        assertEquals(Screen.WebView(url = "http://192.168.1.20:8000/child"), entry.targetScreen)
+    }
+
+    @Test
+    fun `practice entry normalizes v1 and api suffixes`() {
+        val v1Entry = BrainyPalChildModePolicy.practiceEntry(
+            BrainyPalChildConnectionConfig(
+                baseUrl = "http://192.168.1.20:8000/v1",
+                apiKey = "brainypal-local",
+            )
+        )
+        val apiEntry = BrainyPalChildModePolicy.practiceEntry(
+            BrainyPalChildConnectionConfig(
+                baseUrl = "http://192.168.1.20:8000/api/",
+                apiKey = "brainypal-local",
+            )
+        )
+
+        assertEquals(Screen.WebView(url = "http://192.168.1.20:8000/child"), v1Entry.targetScreen)
+        assertEquals(Screen.WebView(url = "http://192.168.1.20:8000/child"), apiEntry.targetScreen)
+    }
+
+    @Test
+    fun `practice entry sends unconfigured child to connection page`() {
+        val entry = BrainyPalChildModePolicy.practiceEntry(BrainyPalChildConnectionConfig())
+
+        assertFalse(entry.configured)
+        assertEquals("配置连接", entry.primaryLabel)
+        assertEquals("需要家长先配置 BrainyPal", entry.supportingText)
+        assertEquals(Screen.BrainyPalConnection, entry.targetScreen)
+    }
+
+    @Test
+    fun `connection summary never exposes api key`() {
+        val summary = BrainyPalChildModePolicy.connectionSummary(
+            BrainyPalChildConnectionConfig(
+                baseUrl = "http://192.168.1.20:8000/rikka/v1/",
+                apiKey = "secret-key",
+            )
+        )
+
+        assertEquals("192.168.1.20:8000/rikka/v1", summary)
+        assertFalse(summary.contains("secret-key"))
+    }
+
+    @Test
+    fun `connection summary reports pending configuration when missing`() {
+        val summary = BrainyPalChildModePolicy.connectionSummary(
+            BrainyPalChildConnectionConfig(baseUrl = "", apiKey = "secret-key")
+        )
+
+        assertEquals("待家长配置", summary)
+        assertFalse(summary.contains("secret-key"))
     }
 
     @Test

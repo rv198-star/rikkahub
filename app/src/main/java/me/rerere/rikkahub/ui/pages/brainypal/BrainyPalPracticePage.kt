@@ -36,7 +36,7 @@ fun BrainyPalPracticePage(vm: SettingVM = koinViewModel()) {
     val navController = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val connection = settings.brainyPalChildConnection
-    val configured = connection.isConfigured()
+    val practiceEntry = BrainyPalChildModePolicy.practiceEntry(connection)
 
     Scaffold(
         topBar = {
@@ -62,7 +62,7 @@ fun BrainyPalPracticePage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { Icon(HugeIcons.Book03, null) },
                         headlineContent = { Text("今日练习") },
                         supportingContent = {
-                            Text(if (configured) "从 BrainyPal 打开孩子今日任务" else "先配置 BrainyPal 连接")
+                            Text(practiceEntry.supportingText)
                         },
                     )
                 }
@@ -74,20 +74,15 @@ fun BrainyPalPracticePage(vm: SettingVM = koinViewModel()) {
                 ) {
                     Button(
                         onClick = {
-                            if (configured) {
-                                navController.navigate(
-                                    Screen.WebView(
-                                        url = BrainyPalChildModePolicy.practiceWebUrl(connection)
-                                    )
-                                )
-                            } else {
-                                navController.navigate(Screen.BrainyPalConnection)
-                            }
+                            navController.navigate(practiceEntry.targetScreen)
                         }
                     ) {
-                        Icon(if (configured) HugeIcons.Book03 else HugeIcons.ServerStack01, null)
+                        Icon(
+                            if (practiceEntry.configured) HugeIcons.Book03 else HugeIcons.ServerStack01,
+                            null
+                        )
                         Text(
-                            text = if (configured) "打开练习" else "配置连接",
+                            text = practiceEntry.primaryLabel,
                             modifier = Modifier.padding(start = 8.dp),
                             style = MaterialTheme.typography.labelLarge,
                         )

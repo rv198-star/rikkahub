@@ -25,6 +25,24 @@ data class BrainyPalManagementPin(
     fun verify(pin: String): Boolean = hash == BrainyPalChildModePolicy.hashPin(pin, salt)
 }
 
+enum class BrainyPalChildNavigationReason {
+    ALLOWED,
+    CHILD_MODE_BLOCKED,
+}
+
+data class BrainyPalChildNavigationDecision(
+    val allowed: Boolean,
+    val fallbackScreen: Screen?,
+    val reason: BrainyPalChildNavigationReason,
+)
+
+data class BrainyPalPracticeEntry(
+    val configured: Boolean,
+    val primaryLabel: String,
+    val supportingText: String,
+    val targetScreen: Screen,
+)
+
 class BrainyPalPinAttemptGate(
     maxFailures: Int = 5,
     private val cooldownMillis: Long = 60_000,
@@ -60,11 +78,19 @@ class BrainyPalChildModePolicy private constructor(
     val active: Boolean,
 ) {
     fun isScreenAllowed(screen: Screen): Boolean {
+        return evaluateScreen(screen).allowed
+    }
+
+    fun evaluateScreen(screen: Screen): BrainyPalChildNavigationDecision {
         if (!active) {
-            return true
+            return BrainyPalChildNavigationDecision(
+                allowed = true,
+                fallbackScreen = null,
+                reason = BrainyPalChildNavigationReason.ALLOWED,
+            )
         }
 
-        return when (screen) {
+        val allowed = when (screen) {
             is Screen.Chat,
             Screen.Setting,
             Screen.BrainyPalPractice,
@@ -81,6 +107,18 @@ class BrainyPalChildModePolicy private constructor(
 
             else -> false
         }
+        if (allowed) {
+            return BrainyPalChildNavigationDecision(
+                allowed = true,
+                fallbackScreen = null,
+                reason = BrainyPalChildNavigationReason.ALLOWED,
+            )
+        }
+        return BrainyPalChildNavigationDecision(
+            allowed = false,
+            fallbackScreen = Screen.Setting,
+            reason = BrainyPalChildNavigationReason.CHILD_MODE_BLOCKED,
+        )
     }
 
     companion object {
@@ -124,6 +162,34 @@ class BrainyPalChildModePolicy private constructor(
                 .removeSuffix("/api")
                 .removeSuffix("/")
             return "$rootUrl/child"
+        }
+
+        fun practiceEntry(config: BrainyPalChildConnectionConfig): BrainyPalPracticeEntry {
+            if (!config.isConfigured()) {
+                return BrainyPalPracticeEntry(
+                    configured = false,
+                    primaryLabel = "配置连接",
+                    supportingText = "需要家长先配置 BrainyPal",
+                    targetScreen = Screen.BrainyPalConnection,
+                )
+            }
+            return BrainyPalPracticeEntry(
+                configured = true,
+                primaryLabel = "打开练习",
+                supportingText = "打开今天的 BrainyPal 任务",
+                targetScreen = Screen.WebView(url = practiceWebUrl(config)),
+            )
+        }
+
+        fun connectionSummary(config: BrainyPalChildConnectionConfig): String {
+            if (!config.isConfigured()) {
+                return "待家长配置"
+            }
+            return config.baseUrl
+                .trim()
+                .removePrefix("https://")
+                .removePrefix("http://")
+                .removeSuffix("/")
         }
 
         internal fun hashPin(pin: String, salt: String): String {

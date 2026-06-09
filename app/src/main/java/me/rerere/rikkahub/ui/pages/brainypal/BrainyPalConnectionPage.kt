@@ -156,6 +156,17 @@ fun BrainyPalConnectionPage(vm: SettingVM = koinViewModel()) {
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
+                            Text(
+                                text = "当前连接：${
+                                    BrainyPalChildModePolicy.connectionSummary(
+                                        BrainyPalChildConnectionConfig(
+                                            baseUrl = baseUrl,
+                                            apiKey = apiKey,
+                                        )
+                                    )
+                                }",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                             message?.let {
                                 Text(
                                     text = it,

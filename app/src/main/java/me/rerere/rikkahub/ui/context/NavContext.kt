@@ -10,8 +10,9 @@ class Navigator(
     private val childModePolicy: BrainyPalChildModePolicy = BrainyPalChildModePolicy.disabled(),
 ) {
     fun navigate(screen: Screen, builder: NavigateOptionsBuilder.() -> Unit = {}) {
-        if (!childModePolicy.isScreenAllowed(screen)) {
-            navigateToChildSafeFallback()
+        val decision = childModePolicy.evaluateScreen(screen)
+        if (!decision.allowed) {
+            navigateToChildSafeFallback(decision.fallbackScreen)
             return
         }
 
@@ -35,9 +36,10 @@ class Navigator(
     }
 
     fun clearAndNavigate(screen: Screen) {
-        if (!childModePolicy.isScreenAllowed(screen)) {
+        val decision = childModePolicy.evaluateScreen(screen)
+        if (!decision.allowed) {
             backStack.clear()
-            backStack.add(Screen.Setting)
+            backStack.add(decision.fallbackScreen ?: Screen.Setting)
             return
         }
 
@@ -49,9 +51,10 @@ class Navigator(
         if (backStack.size > 1) backStack.removeLastOrNull()
     }
 
-    private fun navigateToChildSafeFallback() {
-        if (backStack.lastOrNull() != Screen.Setting) {
-            backStack.add(Screen.Setting)
+    private fun navigateToChildSafeFallback(fallbackScreen: Screen?) {
+        val fallback = fallbackScreen ?: Screen.Setting
+        if (backStack.lastOrNull() != fallback) {
+            backStack.add(fallback)
         }
     }
 }
