@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the first refined RikkaHub child-mode shell for BrainyPal with testable navigation decisions, safe connection summaries, clearer practice entry state, Agent Service contract alignment, and a new debug APK.
+**Goal:** Build the first refined RikkaHub child-mode safety shell for BrainyPal with testable navigation decisions, safe connection summaries, clearer practice entry state, Agent Service contract alignment, and a new debug APK.
 
-**Architecture:** Keep BrainyPal Agent Service as the learning runtime and keep `/child` as the practice WebView target for stage 1. Add pure Kotlin helpers in `BrainyPalChildModePolicy.kt` so behavior can be verified without GUI tests, then wire those helpers into `BrainyPalPracticePage`, `BrainyPalConnectionPage`, `SettingPage`, and `Navigator`.
+**Architecture:** Keep BrainyPal Agent Service as the learning runtime. In this completed safety-shell milestone, `/child` was used only as a temporary WebView bridge because it already existed as the early MVP/PWA. `/child` is not the current Android child-client target. The next child-client phase should replace this bridge with native RikkaHub UI that calls BrainyPal child APIs directly. Add pure Kotlin helpers in `BrainyPalChildModePolicy.kt` so behavior can be verified without GUI tests, then wire those helpers into `BrainyPalPracticePage`, `BrainyPalConnectionPage`, `SettingPage`, and `Navigator`.
 
 **Tech Stack:** Kotlin, Jetpack Compose, RikkaHub existing settings store, JUnit unit tests, Gradle debug APK build.
 
@@ -147,6 +147,10 @@ navigation and BrainyPal `/child` WebView routing without GUI automation.
 
 **Files:**
 - No expected source changes unless alignment check finds a contract drift.
+
+**Boundary note:** These checks align the RikkaHub safety shell with BrainyPal Agent
+Service. They do not validate a native Android child-client UX. The `/child` PWA is an
+early MVP/interface reference, not the product target for the next UI phase.
 
 - [x] **Step 1: Verify BrainyPal Agent Service contract**
 
