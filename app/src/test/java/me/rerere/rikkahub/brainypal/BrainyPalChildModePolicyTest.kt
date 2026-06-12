@@ -1,12 +1,56 @@
 package me.rerere.rikkahub.brainypal
 
 import me.rerere.rikkahub.Screen
+import me.rerere.rikkahub.data.datastore.Settings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrainyPalChildModePolicyTest {
+    @Test
+    fun `new development installs start configured for current Agent Service`() {
+        val settings = Settings()
+
+        assertEquals("http://192.168.5.104:8000/rikka/v1", settings.brainyPalChildConnection.baseUrl)
+        assertEquals("brainypal-local", settings.brainyPalChildConnection.apiKey)
+        assertTrue(settings.brainyPalChildConnection.isConfigured())
+
+        val managementPin = requireNotNull(settings.brainyPalManagementPin)
+        assertTrue(managementPin.verify("123456"))
+        assertFalse(managementPin.verify("000000"))
+    }
+
+    @Test
+    fun `development defaults repair empty persisted child connection and missing pin`() {
+        val connection = BrainyPalChildModePolicy.developmentConnectionOverride(
+            BrainyPalChildConnectionConfig(baseUrl = "", apiKey = "")
+        )
+        val managementPin = BrainyPalChildModePolicy.developmentManagementPinOverride(null)
+
+        assertEquals("http://192.168.5.104:8000/rikka/v1", connection.baseUrl)
+        assertEquals("brainypal-local", connection.apiKey)
+        assertTrue(managementPin.verify("123456"))
+    }
+
+    @Test
+    fun `development defaults override persisted child connection and pin for packaged environment`() {
+        val connection = BrainyPalChildModePolicy.developmentConnectionOverride(
+            BrainyPalChildConnectionConfig(
+                baseUrl = "http://192.168.1.20:8000/rikka/v1",
+                apiKey = "old-local-key",
+            )
+        )
+        val managementPin = BrainyPalChildModePolicy.developmentManagementPinOverride(
+            BrainyPalChildModePolicy.createManagementPin("654321", salt = "old-salt")
+        )
+
+        assertEquals("http://192.168.5.104:8000/rikka/v1", connection.baseUrl)
+        assertEquals("brainypal-local", connection.apiKey)
+        assertTrue(managementPin.verify("123456"))
+        assertFalse(managementPin.verify("654321"))
+    }
+
     @Test
     fun `child mode exposes only safe child entries`() {
         val policy = BrainyPalChildModePolicy.enabled()

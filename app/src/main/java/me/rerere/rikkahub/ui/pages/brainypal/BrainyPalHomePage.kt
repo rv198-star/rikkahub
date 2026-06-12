@@ -4,11 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Card
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -34,6 +35,7 @@ import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.brainypal.BrainyPalChildHomeState
 import me.rerere.rikkahub.brainypal.BrainyPalChildPracticeTaskSummary
+import me.rerere.rikkahub.brainypal.BrainyPalChildUiText
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -81,6 +83,7 @@ fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     innerPadding = innerPadding,
                     state = null,
                     errorMessage = current.error.message ?: "暂时连不上 BrainyPal，可以稍后重试",
+                    onRefresh = vm::refresh,
                     onNavigate = { navController.navigate(it) },
                 )
             }
@@ -90,6 +93,7 @@ fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     innerPadding = innerPadding,
                     state = current.data,
                     errorMessage = current.data.errorMessage,
+                    onRefresh = vm::refresh,
                     onNavigate = { navController.navigate(it) },
                 )
             }
@@ -102,6 +106,7 @@ private fun BrainyPalHomeContent(
     innerPadding: PaddingValues,
     state: BrainyPalChildHomeState?,
     errorMessage: String?,
+    onRefresh: () -> Unit,
     onNavigate: (Screen) -> Unit,
 ) {
     LazyColumn(
@@ -111,14 +116,23 @@ private fun BrainyPalHomeContent(
     ) {
         if (state != null) {
             item {
+                val connectionStatus = BrainyPalChildUiText.connectionStatus(
+                    state.connection
+                )
                 CardGroup(
                     title = { Text("连接") },
                 ) {
                     item(
                         leadingContent = { Icon(HugeIcons.ServerStack01, null) },
-                        headlineContent = { Text(state.workbench.connectionStatus) },
+                        headlineContent = { Text(connectionStatus.title) },
                         supportingContent = {
-                            Text(if (state.workbench.configured) "Agent Service 已配置" else "需要家长完成服务连接")
+                            Text(
+                                if (state.workbench.configured) {
+                                    "家长可在连接设置中查看完整地址"
+                                } else {
+                                    connectionStatus.detail
+                                }
+                            )
                         },
                         onClick = { onNavigate(Screen.BrainyPalConnection) },
                     )
@@ -126,31 +140,12 @@ private fun BrainyPalHomeContent(
             }
 
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Button(
-                        modifier = Modifier.weight(1f),
-                        onClick = { onNavigate(state.workbench.chatAction.target) },
-                    ) {
-                        Icon(HugeIcons.BubbleChatQuestion, null)
-                        Text(
-                            text = state.workbench.chatAction.label,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    }
-                    FilledTonalButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = { onNavigate(state.workbench.practiceAction.target) },
-                    ) {
-                        Icon(HugeIcons.Book03, null)
-                        Text(
-                            text = state.workbench.practiceAction.label,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    }
-                }
+                PrimaryActionStack(
+                    primaryLabel = state.workbench.chatAction.label,
+                    secondaryLabel = state.workbench.practiceAction.label,
+                    onPrimary = { onNavigate(state.workbench.chatAction.target) },
+                    onSecondary = { onNavigate(state.workbench.practiceAction.target) },
+                )
             }
 
             if (state.workbench.showReviewOffer) {
@@ -192,24 +187,111 @@ private fun BrainyPalHomeContent(
             }
         }
 
-        errorMessage?.let { message ->
+        val recoveryMessage = BrainyPalChildUiText.homeErrorRecovery(errorMessage)
+        if (recoveryMessage.isNotBlank()) {
             item {
-                Text(
-                    text = message,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
+                RecoveryCard(
+                    message = recoveryMessage,
+                    onRefresh = onRefresh,
+                    onSettings = { onNavigate(Screen.BrainyPalConnection) },
                 )
             }
         }
 
         item {
             OutlinedButton(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
                 onClick = { onNavigate(Screen.BrainyPalConnection) },
             ) {
                 Icon(HugeIcons.ServerStack01, null)
                 Text(
                     text = "家长连接设置",
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PrimaryActionStack(
+    primaryLabel: String,
+    secondaryLabel: String,
+    onPrimary: () -> Unit,
+    onSecondary: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Button(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp),
+            onClick = onPrimary,
+        ) {
+            Icon(HugeIcons.BubbleChatQuestion, null)
+            Text(
+                text = primaryLabel,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+        FilledTonalButton(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp),
+            onClick = onSecondary,
+        ) {
+            Icon(HugeIcons.Book03, null)
+            Text(
+                text = secondaryLabel,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RecoveryCard(
+    message: String,
+    onRefresh: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    Card {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = message,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            FilledTonalButton(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                onClick = onRefresh,
+            ) {
+                Icon(HugeIcons.Refresh03, null)
+                Text(
+                    text = "刷新",
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            OutlinedButton(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                onClick = onSettings,
+            ) {
+                Icon(HugeIcons.ServerStack01, null)
+                Text(
+                    text = "家长检查服务",
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }

@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.brainypal
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import me.rerere.rikkahub.Screen
 import org.junit.Assert.assertEquals
@@ -23,6 +24,7 @@ class BrainyPalChildHomeStateTest {
 
         assertFalse(apiCreated)
         assertFalse(state.workbench.configured)
+        assertEquals(BrainyPalChildConnectionConfig(), state.connection)
         assertEquals("配置连接", state.workbench.practiceAction.label)
         assertEquals(emptyList<BrainyPalChildPracticeTaskSummary>(), state.practiceTasks)
         assertEquals(null, state.errorMessage)
@@ -67,6 +69,7 @@ class BrainyPalChildHomeStateTest {
         ) }
 
         assertTrue(state.workbench.configured)
+        assertEquals(connection, state.connection)
         assertEquals("1 个任务等你开始", state.workbench.practiceSummary)
         assertTrue(state.workbench.showReviewOffer)
         assertEquals("先复习一道相似题？", state.workbench.reviewMessage)
@@ -91,6 +94,25 @@ class BrainyPalChildHomeStateTest {
         assertEquals("暂时连不上 BrainyPal，可以稍后重试", state.errorMessage)
     }
 
+    @Test
+    fun `configured state rethrows coroutine cancellation`() {
+        val caught = try {
+            runBlocking { BrainyPalChildHomeState.from(
+                connection = BrainyPalChildConnectionConfig(
+                    baseUrl = "http://192.168.1.20:8000/rikka/v1",
+                    apiKey = "brainypal-local",
+                ),
+                apiFactory = { _, _ -> CancellingBrainyPalChildApi },
+                chatScreen = Screen.Chat("chat-id"),
+            ) }
+            null
+        } catch (error: CancellationException) {
+            error
+        }
+
+        assertEquals("cancelled", caught?.message)
+    }
+
     private class FakeBrainyPalChildApi(
         private val tasks: List<BrainyPalChildPracticeTaskSummary>,
         private val reviewOffer: BrainyPalReviewOfferResponse,
@@ -101,6 +123,68 @@ class BrainyPalChildHomeStateTest {
 
         override suspend fun getReviewOffer(remainingMinutes: Int?): BrainyPalReviewOfferResponse {
             return reviewOffer
+        }
+
+        override suspend fun getPracticeTask(taskId: String): BrainyPalChildPracticeTaskDetail {
+            error("practice detail should not be loaded by home state")
+        }
+
+        override suspend fun recordPracticeTaskAnswer(
+            taskId: String,
+            itemId: String,
+            request: BrainyPalRecordPracticeTaskAnswerRequest,
+        ): BrainyPalChildPracticeTaskDetail {
+            error("practice answer should not be saved by home state")
+        }
+
+        override suspend fun requestPracticeTaskHelp(
+            taskId: String,
+            request: BrainyPalRequestPracticeTaskHelpRequest,
+        ): BrainyPalChildPracticeTaskDetail {
+            error("practice help should not be requested by home state")
+        }
+
+        override suspend fun submitPracticeTask(
+            taskId: String,
+            request: BrainyPalSubmitPracticeTaskRequest,
+        ): BrainyPalChildPracticeTaskDetail {
+            error("practice task should not be submitted by home state")
+        }
+    }
+
+    private object CancellingBrainyPalChildApi : BrainyPalChildApi {
+        override suspend fun listPracticeTasks(): BrainyPalChildPracticeTaskListResponse {
+            throw CancellationException("cancelled")
+        }
+
+        override suspend fun getReviewOffer(remainingMinutes: Int?): BrainyPalReviewOfferResponse {
+            error("review offer should not be loaded after cancellation")
+        }
+
+        override suspend fun getPracticeTask(taskId: String): BrainyPalChildPracticeTaskDetail {
+            error("practice detail should not be loaded by home state")
+        }
+
+        override suspend fun recordPracticeTaskAnswer(
+            taskId: String,
+            itemId: String,
+            request: BrainyPalRecordPracticeTaskAnswerRequest,
+        ): BrainyPalChildPracticeTaskDetail {
+            error("practice answer should not be saved by home state")
+        }
+
+        override suspend fun requestPracticeTaskHelp(
+            taskId: String,
+            request: BrainyPalRequestPracticeTaskHelpRequest,
+        ): BrainyPalChildPracticeTaskDetail {
+            error("practice help should not be requested by home state")
+        }
+
+        override suspend fun submitPracticeTask(
+            taskId: String,
+            request: BrainyPalSubmitPracticeTaskRequest,
+        ): BrainyPalChildPracticeTaskDetail {
+            error("practice task should not be submitted by home state")
         }
     }
 }

@@ -175,7 +175,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                             headlineContent = { Text("BrainyPal 首页") },
                         )
                         item(
-                            onClick = { navController.navigate(Screen.BrainyPalPractice) },
+                            onClick = { navController.navigate(practiceEntry.targetScreen) },
                             leadingContent = { Icon(HugeIcons.Book03, null) },
                             supportingContent = {
                                 Text(practiceEntry.supportingText)

@@ -1,8 +1,10 @@
 package me.rerere.rikkahub.brainypal
 
 import me.rerere.rikkahub.Screen
+import kotlinx.coroutines.CancellationException
 
 data class BrainyPalChildHomeState(
+    val connection: BrainyPalChildConnectionConfig,
     val workbench: BrainyPalChildWorkbench,
     val practiceTasks: List<BrainyPalChildPracticeTaskSummary>,
     val reviewOffer: BrainyPalReviewOfferResponse?,
@@ -38,7 +40,10 @@ data class BrainyPalChildHomeState(
                     errorMessage = null,
                     chatScreen = chatScreen,
                 )
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
+                if (error is CancellationException) {
+                    throw error
+                }
                 build(
                     connection = connection,
                     practiceTasks = emptyList(),
@@ -57,6 +62,7 @@ data class BrainyPalChildHomeState(
             chatScreen: Screen,
         ): BrainyPalChildHomeState {
             return BrainyPalChildHomeState(
+                connection = connection,
                 workbench = BrainyPalChildWorkbench.from(
                     connection = connection,
                     practiceTasks = practiceTasks,

@@ -7,6 +7,14 @@ import okhttp3.Response
 import okio.Buffer
 
 class RequestLoggingInterceptor : Interceptor {
+    private val sensitiveHeaders = setOf(
+        "authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "api-key",
+    )
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val startTime = System.currentTimeMillis()
@@ -59,6 +67,12 @@ class RequestLoggingInterceptor : Interceptor {
     }
 
     private fun okhttp3.Headers.toMap(): Map<String, String> {
-        return names().associateWith { get(it) ?: "" }
+        return names().associateWith { name ->
+            if (name.lowercase() in sensitiveHeaders) {
+                "<redacted>"
+            } else {
+                get(name) ?: ""
+            }
+        }
     }
 }

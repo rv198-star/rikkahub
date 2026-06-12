@@ -38,6 +38,55 @@ class BrainyPalChildApiTest {
     }
 
     @Test
+    fun `practice task detail decodes child workflow fields`() {
+        val body = """
+            {
+              "task_id": "task-1",
+              "title": "今日练习",
+              "task_type": "wrong_question_practice",
+              "status": "in_progress",
+              "help_limit": 3,
+              "help_used": 1,
+              "help_message": "可以先想这个方向：括号前是负号时，括号内每一项都变号。",
+              "blank_or_low_effort": true,
+              "agent_policy_snapshot": {
+                "task_phase": "attempt",
+                "allowed_help_actions": ["read_question", "direction_hint"],
+                "help_budget_state": "available",
+                "attempt_evidence_status": "insufficient",
+                "post_submit_review_allowed": false
+              },
+              "items": [
+                {
+                  "item_id": "item_1",
+                  "prompt": "计算 x - (-y - z)",
+                  "child_answer": "x+y+z",
+                  "attempt_evidence": "我把括号里的符号变了。",
+                  "result": "pending",
+                  "correction_status": "not_started",
+                  "blank_or_low_effort": true
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val task = JsonInstant.decodeFromString<BrainyPalChildPracticeTaskDetail>(body)
+
+        assertEquals("task-1", task.taskId)
+        assertEquals("进行中", task.statusLabel)
+        assertEquals("可以先想这个方向：括号前是负号时，括号内每一项都变号。", task.helpMessage)
+        assertEquals(2, task.remainingHelp)
+        assertTrue(task.needsMoreEffort)
+        assertEquals(false, task.agentPolicySnapshot.postSubmitReviewAllowed)
+        assertEquals(listOf("read_question", "direction_hint"), task.agentPolicySnapshot.allowedHelpActions)
+        assertEquals("item_1", task.items.single().itemId)
+        assertEquals("计算 x - (-y - z)", task.items.single().prompt)
+        assertEquals("x+y+z", task.items.single().childAnswer)
+        assertEquals("我把括号里的符号变了。", task.items.single().attemptEvidence)
+        assertTrue(task.items.single().needsMoreEffort)
+    }
+
+    @Test
     fun `review offer is actionable only with event`() {
         val actionableBody = """
             {

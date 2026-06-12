@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,6 +34,7 @@ import me.rerere.hugeicons.stroke.Lock
 import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.rikkahub.brainypal.BrainyPalChildConnectionConfig
 import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
+import me.rerere.rikkahub.brainypal.BrainyPalChildUiText
 import me.rerere.rikkahub.brainypal.BrainyPalManagementPin
 import me.rerere.rikkahub.brainypal.BrainyPalPinAttemptGate
 import me.rerere.rikkahub.data.datastore.Settings
@@ -97,6 +99,9 @@ fun BrainyPalConnectionPage(vm: SettingVM = koinViewModel()) {
                             )
                             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                             Button(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp),
                                 onClick = {
                                     when {
                                         gate.isCoolingDown() -> {
@@ -157,14 +162,7 @@ fun BrainyPalConnectionPage(vm: SettingVM = koinViewModel()) {
                                 )
                             }
                             Text(
-                                text = "当前连接：${
-                                    BrainyPalChildModePolicy.connectionSummary(
-                                        BrainyPalChildConnectionConfig(
-                                            baseUrl = baseUrl,
-                                            apiKey = apiKey,
-                                        )
-                                    )
-                                }",
+                                text = "当前连接：${BrainyPalChildUiText.connectionStatus(currentDraftConnection(baseUrl, apiKey)).detail}",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             message?.let {
@@ -178,6 +176,9 @@ fun BrainyPalConnectionPage(vm: SettingVM = koinViewModel()) {
                                 )
                             }
                             Button(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp),
                                 onClick = {
                                     val config = BrainyPalChildConnectionConfig(
                                         baseUrl = baseUrl.trim(),
@@ -204,6 +205,9 @@ fun BrainyPalConnectionPage(vm: SettingVM = koinViewModel()) {
                             }
                             if (savedPin != null) {
                                 TextButton(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp),
                                     onClick = {
                                         unlocked = false
                                         pinCandidate = ""
@@ -220,6 +224,14 @@ fun BrainyPalConnectionPage(vm: SettingVM = koinViewModel()) {
         }
     }
 }
+
+private fun currentDraftConnection(
+    baseUrl: String,
+    apiKey: String,
+) = BrainyPalChildConnectionConfig(
+    baseUrl = baseUrl,
+    apiKey = apiKey,
+)
 
 private fun Settings.withBrainyPalConnection(
     config: BrainyPalChildConnectionConfig,

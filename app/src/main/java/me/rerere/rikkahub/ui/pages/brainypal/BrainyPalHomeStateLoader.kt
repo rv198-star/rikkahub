@@ -1,8 +1,10 @@
 package me.rerere.rikkahub.ui.pages.brainypal
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.brainypal.BrainyPalChildApi
 import me.rerere.rikkahub.brainypal.BrainyPalChildHomeState
@@ -12,10 +14,24 @@ suspend fun Flow<Settings>.loadBrainyPalChildHomeState(
     apiFactory: (rootUrl: String, apiKey: String) -> BrainyPalChildApi,
     chatScreen: Screen,
 ): BrainyPalChildHomeState {
-    val settings = filter { !it.init }.first()
-    return BrainyPalChildHomeState.from(
-        connection = settings.brainyPalChildConnection,
+    return brainyPalChildHomeStates(
         apiFactory = apiFactory,
         chatScreen = chatScreen,
-    )
+    ).first()
+}
+
+fun Flow<Settings>.brainyPalChildHomeStates(
+    apiFactory: (rootUrl: String, apiKey: String) -> BrainyPalChildApi,
+    chatScreen: Screen,
+): Flow<BrainyPalChildHomeState> {
+    return filter { !it.init }
+        .map { it.brainyPalChildConnection }
+        .distinctUntilChanged()
+        .map { connection ->
+            BrainyPalChildHomeState.from(
+                connection = connection,
+                apiFactory = apiFactory,
+                chatScreen = chatScreen,
+            )
+        }
 }

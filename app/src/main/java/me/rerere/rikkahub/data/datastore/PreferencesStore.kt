@@ -23,6 +23,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.brainypal.BrainyPalChildConnectionConfig
+import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
 import me.rerere.rikkahub.brainypal.BrainyPalManagementPin
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
@@ -248,12 +249,16 @@ class SettingsStore(
                 } ?: BackupReminderConfig(),
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
                 sponsorAlertDismissedAt = preferences[SPONSOR_ALERT_DISMISSED_AT] ?: 0,
-                brainyPalChildConnection = preferences[BRAINYPAL_CHILD_CONNECTION]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: BrainyPalChildConnectionConfig(),
-                brainyPalManagementPin = preferences[BRAINYPAL_MANAGEMENT_PIN]?.let {
-                    JsonInstant.decodeFromString(it)
-                },
+                brainyPalChildConnection = BrainyPalChildModePolicy.developmentConnectionOverride(
+                    preferences[BRAINYPAL_CHILD_CONNECTION]?.let {
+                        JsonInstant.decodeFromString(it)
+                    }
+                ),
+                brainyPalManagementPin = BrainyPalChildModePolicy.developmentManagementPinOverride(
+                    preferences[BRAINYPAL_MANAGEMENT_PIN]?.let {
+                        JsonInstant.decodeFromString(it)
+                    }
+                ),
             )
         }
         .map {
@@ -556,8 +561,8 @@ data class Settings(
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     val launchCount: Int = 0,
     val sponsorAlertDismissedAt: Int = 0,
-    val brainyPalChildConnection: BrainyPalChildConnectionConfig = BrainyPalChildConnectionConfig(),
-    val brainyPalManagementPin: BrainyPalManagementPin? = null,
+    val brainyPalChildConnection: BrainyPalChildConnectionConfig = BrainyPalChildModePolicy.developmentDefaultConnection(),
+    val brainyPalManagementPin: BrainyPalManagementPin? = BrainyPalChildModePolicy.developmentDefaultManagementPin(),
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储
