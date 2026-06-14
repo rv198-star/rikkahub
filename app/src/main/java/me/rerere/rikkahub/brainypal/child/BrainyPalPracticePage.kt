@@ -675,7 +675,7 @@ private fun PracticeTaskDetailContent(
                     ?.takeIf { it.itemId == item.itemId }
                     ?.message,
                 remainingHelp = detail.remainingHelp,
-                canEdit = detail.canSubmit,
+                canEdit = detail.canEditAttempt,
                 actionInProgress = actionInProgress,
                 isDictation = isDictation,
                 isCurrentDictationItem = dictationSession.isActiveItem(item.itemId),

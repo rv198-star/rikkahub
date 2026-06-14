@@ -175,6 +175,40 @@ class BrainyPalChildApiTest {
     }
 
     @Test
+    fun `practice task detail can edit in progress even when submit is not available`() {
+        val body = """
+            {
+              "task_id": "task-equations",
+              "attempt_session_id": "attempt_123",
+              "status": "in_progress",
+              "channel": "app",
+              "help_budget": 2,
+              "help_used": 0,
+              "remaining_help": 2,
+              "total_items": 2,
+              "answered_items": 0,
+              "submit_available": false,
+              "task": {
+                "task_id": "task-equations",
+                "title": "一元一次方程练习",
+                "subject": "数学",
+                "mode": "practice",
+                "instructions": "先独立完成",
+                "items": []
+              },
+              "answers": {},
+              "evidence_by_item": {},
+              "result": null
+            }
+        """.trimIndent()
+
+        val task = JsonInstant.decodeFromString<BrainyPalChildPracticeTaskDetail>(body)
+
+        assertTrue(task.canEditAttempt)
+        assertFalse(task.canSubmit)
+    }
+
+    @Test
     fun `practice task detail decodes unified attempt result contract`() {
         val body = """
             {
@@ -261,6 +295,7 @@ class BrainyPalChildApiTest {
         assertEquals(2, task.helpLimit)
         assertEquals(1, task.remainingHelp)
         assertEquals(2, task.answeredItems)
+        assertFalse(task.canEditAttempt)
         assertFalse(task.canSubmit)
         assertEquals("4", task.items.single().childAnswer)
         assertEquals("correct", task.result?.itemResults?.get("q1")?.status)

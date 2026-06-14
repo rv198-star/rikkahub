@@ -263,6 +263,9 @@ data class BrainyPalChildPracticeTaskDetail(
     val canSubmit: Boolean
         get() = submitAvailable ?: (status in setOf("pending", "assigned", "accepted", "in_progress", "paused"))
 
+    val canEditAttempt: Boolean
+        get() = status in setOf("accepted", "in_progress", "paused") && attemptSessionId != null
+
     constructor(
         taskId: String,
         title: String,
