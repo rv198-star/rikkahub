@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -2438,6 +2439,10 @@ private fun ParentOcrEvidenceReviewCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            ParentOcrEvidenceThumbnail(
+                card = card,
+                onPreview = onPreview,
+            )
             OutlinedButton(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2465,6 +2470,48 @@ private fun ParentOcrEvidenceReviewCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ParentOcrEvidenceThumbnail(
+    card: BrainyPalParentOcrEvidenceCard,
+    onPreview: () -> Unit,
+) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(156.dp)
+            .background(Color.Black, RoundedCornerShape(10.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+            .clickable(onClick = onPreview),
+    ) {
+        Image(
+            painter = rememberAsyncImagePainter(card.previewImageRef),
+            contentDescription = card.previewActionLabel,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
+        card.previewBoundingBox?.let { box ->
+            Box(
+                modifier = Modifier
+                    .offset(
+                        x = maxWidth * box.x,
+                        y = maxHeight * box.y,
+                    )
+                    .width(maxWidth * box.width)
+                    .height(maxHeight * box.height)
+                    .border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.error,
+                        shape = RoundedCornerShape(5.dp),
+                    )
+                    .background(
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(5.dp),
+                    )
+            )
         }
     }
 }
