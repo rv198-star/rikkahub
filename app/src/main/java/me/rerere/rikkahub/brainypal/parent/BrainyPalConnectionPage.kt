@@ -80,15 +80,20 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalParentApi
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentApiFactory
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalCreateStrategyRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalCreateStrategyResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionComposer
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentLearningRecordsSummaryResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterialComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanSnapshot
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskResultDetailResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWebMaterialSearchRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWorkloadGuardConflict
 import me.rerere.rikkahub.brainypal.shared.BrainyPalSendPendingTaskRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalStrategyVersion
 import me.rerere.rikkahub.brainypal.shared.BrainyPalUpdatePendingTaskRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskSummary
@@ -168,6 +173,11 @@ fun BrainyPalConnectionPage(
     var parentChatText by remember { mutableStateOf("") }
     var parentChatTrigger by remember { mutableStateOf<BrainyPalParentChatTriggerResponse?>(null) }
     var photoScanSnapshot by remember { mutableStateOf<BrainyPalParentPhotoScanSnapshot?>(null) }
+    var learningSummary by remember { mutableStateOf<BrainyPalParentLearningRecordsSummaryResponse?>(null) }
+    var resultDetail by remember { mutableStateOf<BrainyPalParentPracticeTaskResultDetailResponse?>(null) }
+    var strategyGoalText by remember { mutableStateOf("") }
+    var createdStrategy by remember { mutableStateOf<BrainyPalCreateStrategyResponse?>(null) }
+    var strategies by remember { mutableStateOf<List<BrainyPalStrategyVersion>>(emptyList()) }
 
     fun updateWorkbench(
         drafts: List<BrainyPalParentMaterial> = draftMaterials,
@@ -453,7 +463,10 @@ fun BrainyPalConnectionPage(
                         },
                         onRefresh = {
                             runParentAction("已刷新父母工作台") { api ->
-                                applyWorkbenchResponse(api.getTaskWorkbench())
+                                val tasks = applyWorkbenchResponse(api.getTaskWorkbench())
+                                learningSummary = api.getLearningRecordsSummary(limit = 6)
+                                strategies = api.listStrategies().items
+                                tasks
                             }
                         },
                     )
@@ -586,11 +599,20 @@ fun BrainyPalConnectionPage(
                             ParentTaskStatusCard(
                                 busy = parentBusy,
                                 tasks = parentTasks,
+                                learningSummary = learningSummary,
+                                resultDetail = resultDetail,
                                 onRefresh = {
                                     runParentAction("已刷新任务状态") { api ->
                                         val tasks = api.listPracticeTasks().items
+                                        learningSummary = api.getLearningRecordsSummary(limit = 6)
                                         updateWorkbench(tasks = tasks)
                                         tasks
+                                    }
+                                },
+                                onOpenResult = { task ->
+                                    runParentAction("已加载复盘：${task.title}") { api ->
+                                        resultDetail = api.getPracticeTaskResult(task.taskId)
+                                        null
                                     }
                                 },
                                 onPreviewOcr = { previewOcrCard = it },
@@ -619,6 +641,56 @@ fun BrainyPalConnectionPage(
                         item {
                             ParentStrategyCard(
                                 configured = configured,
+                                busy = parentBusy,
+                                goalText = strategyGoalText,
+                                createdStrategy = createdStrategy,
+                                strategies = strategies,
+                                message = parentMessage,
+                                onGoalTextChange = { strategyGoalText = it },
+                                onCreateStrategy = {
+                                    if (strategyGoalText.isBlank()) {
+                                        parentMessage = "先写一下希望 BrainyPal 怎么引导孩子。"
+                                        return@ParentStrategyCard
+                                    }
+                                    runParentAction("已生成策略候选，确认后才会生效") { api ->
+                                        val response = api.createStrategy(
+                                            BrainyPalCreateStrategyRequest(
+                                                parentGoalText = strategyGoalText,
+                                                evidenceRefs = listOf("parent-app://strategy-input"),
+                                            )
+                                        )
+                                        createdStrategy = response
+                                        strategies = listOf(response.strategy) + strategies.filterNot {
+                                            it.versionId == response.strategy.versionId
+                                        }
+                                        null
+                                    }
+                                },
+                                onRefreshStrategies = {
+                                    runParentAction("已刷新策略列表") { api ->
+                                        strategies = api.listStrategies().items
+                                        null
+                                    }
+                                },
+                                onActivateStrategy = { strategy ->
+                                    runParentAction("已启用策略") { api ->
+                                        val updated = api.activateStrategy(strategy.versionId)
+                                        strategies = listOf(updated) + strategies.filterNot {
+                                            it.versionId == updated.versionId
+                                        }
+                                        createdStrategy = null
+                                        null
+                                    }
+                                },
+                                onPauseStrategy = { strategy ->
+                                    runParentAction("已暂停策略") { api ->
+                                        val updated = api.pauseStrategy(strategy.versionId)
+                                        strategies = listOf(updated) + strategies.filterNot {
+                                            it.versionId == updated.versionId
+                                        }
+                                        null
+                                    }
+                                },
                                 onOpenSettings = { showConnectionSettings = true },
                             )
                         }
@@ -797,7 +869,12 @@ fun BrainyPalConnectionPage(
                                                     }
                                                 }
                                                 "child_status_query" -> activeParentSection = "status"
-                                                "strategy_proposal" -> activeParentSection = "strategy"
+                                                "strategy_proposal" -> {
+                                                    strategyGoalText = trigger.strategyCandidate
+                                                        ?.parentGoalText
+                                                        ?: parentChatText
+                                                    activeParentSection = "strategy"
+                                                }
                                             }
                                         },
                                     )
@@ -1791,6 +1868,50 @@ private fun ParentPhotoScanCandidateRow(card: BrainyPalParentPhotoScanCandidateC
 }
 
 @Composable
+private fun ParentInfoCard(
+    card: BrainyPalParentInfoCard,
+    actionEnabled: Boolean = true,
+    onPrimaryAction: (() -> Unit)? = null,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(card.title, style = MaterialTheme.typography.titleSmall)
+            Text(card.body, style = MaterialTheme.typography.bodySmall)
+            card.metadata?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            card.statusLabel.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = BrainyPalChildTheme.amberText,
+                )
+            }
+            val label = card.actionLabels.firstOrNull()
+            if (label != null && onPrimaryAction != null) {
+                Button(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 44.dp),
+                    enabled = actionEnabled,
+                    onClick = onPrimaryAction,
+                ) {
+                    Text(label)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ParentPendingReviewCard(
     busy: Boolean,
     draftMaterials: List<BrainyPalParentMaterial>,
@@ -1855,8 +1976,19 @@ private fun ParentPendingReviewCard(
 @Composable
 private fun ParentStrategyCard(
     configured: Boolean,
+    busy: Boolean,
+    goalText: String,
+    createdStrategy: BrainyPalCreateStrategyResponse?,
+    strategies: List<BrainyPalStrategyVersion>,
+    message: String?,
+    onGoalTextChange: (String) -> Unit,
+    onCreateStrategy: () -> Unit,
+    onRefreshStrategies: () -> Unit,
+    onActivateStrategy: (BrainyPalStrategyVersion) -> Unit,
+    onPauseStrategy: (BrainyPalStrategyVersion) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    val cards = BrainyPalParentWorkbenchUi.strategyCards(strategies)
     Card {
         Column(
             modifier = Modifier
@@ -1869,11 +2001,71 @@ private fun ParentStrategyCard(
                 text = "这里会承接家长对 AI 的长期要求：求助边界、鼓励方式、复盘重点和成就系统方向。当前先保持轻量入口，避免打断作业供给主流程。",
                 style = MaterialTheme.typography.bodyMedium,
             )
+            OutlinedTextField(
+                value = goalText,
+                onValueChange = onGoalTextChange,
+                label = { Text("引导策略目标") },
+                placeholder = { Text("例如：这周朗读多鼓励，提示慢一点，不直接说答案") },
+                minLines = 3,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                enabled = configured && !busy,
+                onClick = onCreateStrategy,
+            ) {
+                Text("生成策略候选")
+            }
+            ParentBusyMessage(busy = busy, message = message)
+            createdStrategy?.let { response ->
+                ParentInfoCard(
+                    BrainyPalParentInfoCard(
+                        title = "待确认策略",
+                        body = response.strategy.childFacingGoal,
+                        metadata = response.parentMessage.ifBlank { response.strategy.rationale },
+                        statusLabel = response.status,
+                        actionLabels = listOf("确认启用"),
+                    ),
+                    actionEnabled = !busy,
+                    onPrimaryAction = { onActivateStrategy(response.strategy) },
+                )
+            }
+            FilledTonalButton(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 44.dp),
+                enabled = configured && !busy,
+                onClick = onRefreshStrategies,
+            ) {
+                Text("刷新策略列表")
+            }
+            if (cards.isEmpty()) {
+                Text(
+                    text = "还没有策略。家长确认启用前，AI 不会把候选策略当成事实引用。",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                cards.forEachIndexed { index, card ->
+                    if (index > 0) HorizontalDivider()
+                    val strategy = strategies[index]
+                    ParentInfoCard(
+                        card = card,
+                        actionEnabled = !busy,
+                        onPrimaryAction = when (strategy.status) {
+                            "draft" -> ({ onActivateStrategy(strategy) })
+                            "active" -> ({ onPauseStrategy(strategy) })
+                            else -> null
+                        },
+                    )
+                }
+            }
             OutlinedButton(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
-                enabled = configured,
+                enabled = configured && !busy,
                 onClick = onOpenSettings,
             ) {
                 Text("检查服务连接")
@@ -2314,7 +2506,10 @@ private fun ParentDueReviewRow(
 private fun ParentTaskStatusCard(
     busy: Boolean,
     tasks: List<BrainyPalChildPracticeTaskDetail>,
+    learningSummary: BrainyPalParentLearningRecordsSummaryResponse?,
+    resultDetail: BrainyPalParentPracticeTaskResultDetailResponse?,
     onRefresh: () -> Unit,
+    onOpenResult: (BrainyPalChildPracticeTaskDetail) -> Unit,
     onPreviewOcr: (BrainyPalParentOcrEvidenceCard) -> Unit,
     onConfirmOcr: (taskId: String, itemId: String, confirmation: String, label: String) -> Unit,
 ) {
@@ -2350,6 +2545,16 @@ private fun ParentTaskStatusCard(
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
+            learningSummary?.let { summary ->
+                BrainyPalParentWorkbenchUi.learningSummaryCards(summary).take(4).forEach { card ->
+                    ParentInfoCard(card)
+                }
+            }
+            resultDetail?.let { detail ->
+                BrainyPalParentWorkbenchUi.resultDetailCards(detail).take(6).forEach { card ->
+                    ParentInfoCard(card)
+                }
+            }
             if (groups.isEmpty()) {
                 Text(
                     text = "还没有加载任务。刷新后可以查看孩子完成状态和需要家长确认的 OCR 结果。",
@@ -2364,6 +2569,7 @@ private fun ParentTaskStatusCard(
                         ParentTaskStatusRow(
                             task = task,
                             busy = busy,
+                            onOpenResult = onOpenResult,
                             onPreviewOcr = onPreviewOcr,
                             onConfirmOcr = onConfirmOcr,
                         )
@@ -2378,6 +2584,7 @@ private fun ParentTaskStatusCard(
 private fun ParentTaskStatusRow(
     task: BrainyPalChildPracticeTaskDetail,
     busy: Boolean,
+    onOpenResult: (BrainyPalChildPracticeTaskDetail) -> Unit,
     onPreviewOcr: (BrainyPalParentOcrEvidenceCard) -> Unit,
     onConfirmOcr: (taskId: String, itemId: String, confirmation: String, label: String) -> Unit,
 ) {
@@ -2390,6 +2597,17 @@ private fun ParentTaskStatusRow(
         )
         if (summary.parentSummary.isNotBlank()) {
             Text("家长摘要：${summary.parentSummary}", style = MaterialTheme.typography.bodySmall)
+        }
+        if (task.status in setOf("submitted", "completed", "reviewing")) {
+            OutlinedButton(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 44.dp),
+                enabled = !busy,
+                onClick = { onOpenResult(task) },
+            ) {
+                Text("查看复盘")
+            }
         }
         BrainyPalParentWorkbenchUi.ocrEvidenceCards(task).forEach { card ->
             ParentOcrEvidenceReviewCard(

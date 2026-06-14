@@ -55,6 +55,12 @@ interface BrainyPalChildApi {
         @Body request: BrainyPalSubmitDictationOcrEvidenceRequest,
     ): BrainyPalChildPracticeTaskDetail
 
+    @POST("/api/v1/child/practice-tasks/{task_id}/oral-submissions")
+    suspend fun submitOralEvidence(
+        @Path("task_id") taskId: String,
+        @Body request: BrainyPalSubmitOralEvidenceRequest,
+    ): BrainyPalPracticeAttemptSessionResponse
+
     @POST("/api/v1/child/practice-tasks/{task_id}/items/{item_id}/dictation-ocr-confirmation")
     suspend fun confirmDictationOcrEvidence(
         @Path("task_id") taskId: String,
@@ -358,6 +364,103 @@ data class BrainyPalChildPracticeTaskItem(
 }
 
 @Serializable
+data class BrainyPalPracticeAttemptSessionResponse(
+    @SerialName("task_id")
+    val taskId: String,
+    @SerialName("attempt_session_id")
+    val attemptSessionId: String,
+    val status: String,
+    val channel: String = "app",
+    @SerialName("help_budget")
+    val helpBudget: Int = 0,
+    @SerialName("help_used")
+    val helpUsed: Int = 0,
+    @SerialName("remaining_help")
+    val remainingHelp: Int = 0,
+    @SerialName("total_items")
+    val totalItems: Int = 0,
+    @SerialName("answered_items")
+    val answeredItems: Int = 0,
+    @SerialName("submit_available")
+    val submitAvailable: Boolean = false,
+    val task: BrainyPalChildPracticeTaskPayload,
+    val answers: Map<String, BrainyPalPracticeAttemptAnswer> = emptyMap(),
+    @SerialName("evidence_by_item")
+    val evidenceByItem: Map<String, List<BrainyPalPracticeOcrEvidenceView>> = emptyMap(),
+    @SerialName("oral_evidence_by_item")
+    val oralEvidenceByItem: Map<String, BrainyPalPracticeOralEvidenceView> = emptyMap(),
+    val result: BrainyPalPracticeTaskResult? = null,
+) {
+    fun toTaskDetail(): BrainyPalChildPracticeTaskDetail {
+        return BrainyPalChildPracticeTaskDetail(
+            rawTaskId = taskId,
+            attemptSessionId = attemptSessionId,
+            channel = channel,
+            rawTitle = task.title,
+            legacyTaskType = task.mode,
+            status = status,
+            helpBudget = helpBudget,
+            helpUsed = helpUsed,
+            remainingHelpValue = remainingHelp,
+            totalItems = totalItems,
+            answeredItems = answeredItems,
+            submitAvailable = submitAvailable,
+            task = task,
+            parentSummary = result?.parentSummary,
+            answers = answers,
+            result = result,
+        )
+    }
+}
+
+@Serializable
+data class BrainyPalPracticeOcrEvidenceView(
+    @SerialName("evidence_id")
+    val evidenceId: String,
+    @SerialName("item_id")
+    val itemId: String,
+    @SerialName("source_image_ref")
+    val sourceImageRef: String,
+    @SerialName("recognized_answer")
+    val recognizedAnswer: String = "",
+    val confidence: Float? = null,
+    @SerialName("bounding_box")
+    val boundingBox: BrainyPalPracticeEvidenceBoundingBoxView? = null,
+    @SerialName("created_at")
+    val createdAt: String = "",
+)
+
+@Serializable
+data class BrainyPalPracticeEvidenceBoundingBoxView(
+    val page: Int = 1,
+    val x: Float,
+    val y: Float,
+    val width: Float,
+    val height: Float,
+)
+
+@Serializable
+data class BrainyPalPracticeOralEvidenceView(
+    @SerialName("evidence_id")
+    val evidenceId: String,
+    @SerialName("item_id")
+    val itemId: String,
+    @SerialName("self_rating")
+    val selfRating: Int,
+    @SerialName("reread_count")
+    val rereadCount: Int = 0,
+    @SerialName("stuck_points")
+    val stuckPoints: List<String> = emptyList(),
+    @SerialName("audio_ref")
+    val audioRef: String? = null,
+    val transcript: String? = null,
+    @SerialName("text_hidden_during_attempt")
+    val textHiddenDuringAttempt: Boolean = false,
+    @SerialName("created_at")
+    val createdAt: String = "",
+)
+
+@Serializable
 data class BrainyPalDictationOcrBoundingBox(
     val x: Float,
     val y: Float,
@@ -603,6 +706,30 @@ data class BrainyPalSubmitDictationOcrEvidenceRequest(
     @SerialName("recognized_text")
     val recognizedText: String = "",
     val items: List<BrainyPalSubmitDictationOcrEvidenceItemRequest> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalSubmitOralEvidenceItemRequest(
+    @SerialName("item_id")
+    val itemId: String,
+    @SerialName("self_rating")
+    val selfRating: Int,
+    @SerialName("reread_count")
+    val rereadCount: Int = 0,
+    @SerialName("stuck_points")
+    val stuckPoints: List<String> = emptyList(),
+    @SerialName("audio_ref")
+    val audioRef: String? = null,
+    val transcript: String? = null,
+    @SerialName("text_hidden_during_attempt")
+    val textHiddenDuringAttempt: Boolean = false,
+)
+
+@Serializable
+data class BrainyPalSubmitOralEvidenceRequest(
+    @SerialName("attempt_session_id")
+    val attemptSessionId: String? = null,
+    val items: List<BrainyPalSubmitOralEvidenceItemRequest> = emptyList(),
 )
 
 @Serializable

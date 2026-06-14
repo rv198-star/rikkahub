@@ -17,7 +17,9 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalPracticeHintResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalRecordPracticeTaskAnswerRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalRequestPracticeTaskHelpRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalReviewOfferResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalPracticeAttemptSessionResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalSubmitDictationOcrEvidenceRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalSubmitOralEvidenceRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalSubmitPracticeTaskRequest
 import me.rerere.rikkahub.data.datastore.Settings
 import org.junit.Assert.assertEquals
@@ -152,6 +154,13 @@ class BrainyPalHomeStateLoaderTest {
             request: BrainyPalSubmitDictationOcrEvidenceRequest,
         ): BrainyPalChildPracticeTaskDetail {
             error("dictation OCR evidence should not be submitted by home state")
+        }
+
+        override suspend fun submitOralEvidence(
+            taskId: String,
+            request: BrainyPalSubmitOralEvidenceRequest,
+        ): BrainyPalPracticeAttemptSessionResponse {
+            error("oral evidence should not be submitted by home state")
         }
 
         override suspend fun confirmDictationOcrEvidence(

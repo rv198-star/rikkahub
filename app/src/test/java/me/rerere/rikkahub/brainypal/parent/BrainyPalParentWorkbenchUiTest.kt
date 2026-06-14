@@ -14,6 +14,13 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanCandidate
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanSnapshot
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanVerification
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentLearningRecordSummaryView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentLearningRecordsSummaryResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeItemEvidenceView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeOralEvidenceView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeResultItemView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskResultDetailResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalStrategyVersion
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWebMaterialSource
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskSummary
 import org.junit.Assert.assertEquals
@@ -327,6 +334,96 @@ class BrainyPalParentWorkbenchUiTest {
         assertEquals("3 题", BrainyPalParentTaskSummary.from(practiceTask(itemCount = 3)).itemCountLabel)
     }
 
+    @Test
+    fun `learning summary cards show counts and latest parent-safe records`() {
+        val cards = BrainyPalParentWorkbenchUi.learningSummaryCards(
+            BrainyPalParentLearningRecordsSummaryResponse(
+                totalCount = 2,
+                recordTypeCounts = mapOf("practice" to 1, "recitation" to 1),
+                knowledgePoints = listOf("角平分线", "背诵节奏"),
+                latestRecords = listOf(
+                    BrainyPalParentLearningRecordSummaryView(
+                        recordId = "practice-attempt-001",
+                        recordType = "practice",
+                        subject = "数学",
+                        capturedAt = "2026-06-14T09:00:00+08:00",
+                        sourceRefs = listOf("practice_task://task-geometry"),
+                        knowledgePoints = listOf("角平分线"),
+                        parentSummary = "几何题对角平分线关系还不稳。",
+                        strategyVersionId = "strategy_math",
+                        wikiPath = "learning_records/20260614-090000-practice-attempt-001.md",
+                    )
+                ),
+            )
+        )
+
+        assertEquals("学习记录 2", cards.first().title)
+        assertTrue(cards.first().body.contains("练习 1"))
+        assertEquals("数学 · 练习", cards[1].title)
+        assertEquals("几何题对角平分线关系还不稳。", cards[1].body)
+        assertEquals("角平分线", cards[1].metadata)
+    }
+
+    @Test
+    fun `oral result evidence card summarizes rereads and stuck points without transcript`() {
+        val cards = BrainyPalParentWorkbenchUi.resultDetailCards(
+            BrainyPalParentPracticeTaskResultDetailResponse(
+                taskId = "reading-task",
+                title = "朗读短文",
+                subject = "语文",
+                mode = "reading",
+                status = "completed",
+                parentSummary = "孩子完成朗读，自评 4 分，重听 2 次。",
+                resultStatus = "completed",
+                items = listOf(
+                    BrainyPalParentPracticeResultItemView(
+                        itemId = "line_1",
+                        prompt = "春天来了，小草从土里探出头。",
+                        kind = "reading",
+                        resultStatus = "completed",
+                        parentNote = "停顿比上次稳定。",
+                        correctionPrompt = null,
+                        expectedAnswer = null,
+                        wrongQuestionRef = null,
+                        evidence = BrainyPalParentPracticeItemEvidenceView(
+                            answerValue = "4",
+                            answerSource = "oral_self_rating",
+                            oralEvidence = BrainyPalParentPracticeOralEvidenceView(
+                                evidenceId = "oral_line_1",
+                                selfRating = 4,
+                                rereadCount = 2,
+                                stuckPoints = listOf("第二句换气"),
+                                audioRef = "local-cache://oral/line_1.wav",
+                                textHiddenDuringAttempt = false,
+                            ),
+                        ),
+                    )
+                ),
+                nextActions = emptyList(),
+            )
+        )
+
+        assertEquals("朗读短文", cards.first().title)
+        assertTrue(cards.first().body.contains("孩子完成朗读"))
+        assertEquals("第 1 条 · 朗读证据", cards[1].title)
+        assertTrue(cards[1].body.contains("自评 4/5"))
+        assertTrue(cards[1].body.contains("重听 2 次"))
+        assertTrue(cards[1].body.contains("第二句换气"))
+        assertFalse(cards[1].body.contains("transcript"))
+    }
+
+    @Test
+    fun `strategy cards keep draft and active confirmation actions separate`() {
+        val draft = strategy(status = "draft")
+        val active = strategy(versionId = "strategy_review_prompt_002", status = "active")
+        val cards = BrainyPalParentWorkbenchUi.strategyCards(listOf(draft, active))
+
+        assertEquals("待确认策略", cards[0].statusLabel)
+        assertEquals(listOf("确认启用"), cards[0].actionLabels)
+        assertEquals("已启用策略", cards[1].statusLabel)
+        assertEquals(listOf("暂停"), cards[1].actionLabels)
+    }
+
     private fun material(materialId: String): BrainyPalParentMaterial {
         return BrainyPalParentMaterial(
             materialId = materialId,
@@ -458,6 +555,24 @@ class BrainyPalParentWorkbenchUiTest {
                     prompt = "春天来了，小草从土里探出头。",
                 )
             ),
+        )
+    }
+
+    private fun strategy(
+        versionId: String = "strategy_review_prompt_001",
+        status: String = "draft",
+    ): BrainyPalStrategyVersion {
+        return BrainyPalStrategyVersion(
+            versionId = versionId,
+            scope = "review_prompt",
+            status = status,
+            parentGoalText = "这周朗读多鼓励，提示慢一点，不直接说答案。",
+            childFacingGoal = "我会先鼓励你说出思路，再给一点点方向。",
+            rationale = "来自家长确认的引导方向。",
+            evidenceRefs = listOf("parent_chat://strategy_1"),
+            createdAt = "2026-06-14T09:00:00+08:00",
+            activeFrom = "2026-06-14T09:00:00+08:00",
+            activeUntil = "2026-06-21T09:00:00+08:00",
         )
     }
 }

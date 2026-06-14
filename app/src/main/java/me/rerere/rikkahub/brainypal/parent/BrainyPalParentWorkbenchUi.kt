@@ -8,9 +8,12 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentLearningRecordsSummaryResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanSnapshot
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskResultDetailResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWorkloadGuardConflict
+import me.rerere.rikkahub.brainypal.shared.BrainyPalStrategyVersion
 
 data class BrainyPalParentSupplyEntry(
     val id: String,
@@ -112,6 +115,14 @@ data class BrainyPalParentPhotoScanCandidateCard(
     val confidenceLabel: String,
     val verificationLabel: String,
     val actionLabels: List<String>,
+)
+
+data class BrainyPalParentInfoCard(
+    val title: String,
+    val body: String,
+    val metadata: String? = null,
+    val statusLabel: String = "",
+    val actionLabels: List<String> = emptyList(),
 )
 
 object BrainyPalParentWorkbenchUi {
@@ -469,6 +480,100 @@ object BrainyPalParentWorkbenchUi {
         }
     }
 
+    fun learningSummaryCards(
+        summary: BrainyPalParentLearningRecordsSummaryResponse,
+    ): List<BrainyPalParentInfoCard> {
+        val overview = BrainyPalParentInfoCard(
+            title = "学习记录 ${summary.totalCount}",
+            body = summary.recordTypeCounts
+                .toList()
+                .sortedBy { (type, _) -> type }
+                .joinToString(" · ") { (type, count) -> "${recordTypeLabel(type)} $count" }
+                .ifBlank { "还没有学习记录" },
+            metadata = summary.knowledgePoints.take(3).joinToString(" · ").ifBlank { null },
+        )
+        val latest = summary.latestRecords.map { record ->
+            BrainyPalParentInfoCard(
+                title = listOfNotNull(record.subject, recordTypeLabel(record.recordType))
+                    .joinToString(" · "),
+                body = record.parentSummary,
+                metadata = record.knowledgePoints.joinToString(" · ").ifBlank { null },
+            )
+        }
+        return listOf(overview) + latest
+    }
+
+    fun resultDetailCards(
+        detail: BrainyPalParentPracticeTaskResultDetailResponse,
+    ): List<BrainyPalParentInfoCard> {
+        val summary = BrainyPalParentInfoCard(
+            title = detail.title,
+            body = detail.parentSummary,
+            metadata = recordTypeLabel(detail.mode),
+            statusLabel = detail.resultStatus,
+        )
+        val itemCards = detail.items.mapIndexed { index, item ->
+            val oralEvidence = item.evidence.oralEvidence
+            val bodyParts = if (oralEvidence != null) {
+                listOfNotNull(
+                    "自评 ${oralEvidence.selfRating}/5",
+                    "重听 ${oralEvidence.rereadCount} 次",
+                    oralEvidence.stuckPoints.takeIf { it.isNotEmpty() }?.joinToString(
+                        prefix = "卡点：",
+                        separator = "；",
+                    ),
+                    item.parentNote.takeIf { it.isNotBlank() },
+                )
+            } else {
+                listOfNotNull(
+                    item.parentNote.takeIf { it.isNotBlank() },
+                    item.evidence.answerValue?.let { "孩子答案：$it" },
+                )
+            }
+            BrainyPalParentInfoCard(
+                title = "第 ${index + 1} 条 · ${evidenceTypeLabel(item.kind, oralEvidence != null)}",
+                body = bodyParts.joinToString(" · ").ifBlank { item.prompt },
+                metadata = item.correctionPrompt,
+                statusLabel = item.resultStatus,
+            )
+        }
+        val actions = detail.nextActions.map { action ->
+            BrainyPalParentInfoCard(
+                title = action.title,
+                body = action.body,
+                metadata = action.itemIds.joinToString(" · ").ifBlank { null },
+                statusLabel = action.kind,
+            )
+        }
+        return listOf(summary) + itemCards + actions
+    }
+
+    fun strategyCards(
+        strategies: List<BrainyPalStrategyVersion>,
+    ): List<BrainyPalParentInfoCard> {
+        return strategies.map { strategy ->
+            val statusLabel = when (strategy.status) {
+                "draft" -> "待确认策略"
+                "active" -> "已启用策略"
+                "paused" -> "已暂停策略"
+                "expired" -> "已过期策略"
+                else -> "策略候选"
+            }
+            val actions = when (strategy.status) {
+                "draft" -> listOf("确认启用")
+                "active" -> listOf("暂停")
+                else -> emptyList()
+            }
+            BrainyPalParentInfoCard(
+                title = strategy.childFacingGoal,
+                body = strategy.parentGoalText,
+                metadata = strategy.rationale,
+                statusLabel = statusLabel,
+                actionLabels = actions,
+            )
+        }
+    }
+
     private fun hasPendingOcrConfirmation(task: BrainyPalChildPracticeTaskDetail): Boolean {
         return BrainyPalDictationOcrReview.rows(task).any { it.requiresManualConfirmation }
     }
@@ -478,6 +583,29 @@ object BrainyPalParentWorkbenchUi {
             "reading", "recitation" -> "段"
             "dictation" -> "条"
             else -> "题"
+        }
+    }
+
+    private fun recordTypeLabel(recordType: String): String {
+        return when (recordType) {
+            "practice",
+            "wrong_question_practice" -> "练习"
+            "dictation" -> "听写"
+            "reading" -> "朗读"
+            "recitation" -> "背诵"
+            else -> "记录"
+        }
+    }
+
+    private fun evidenceTypeLabel(kind: String, hasOralEvidence: Boolean): String {
+        return if (hasOralEvidence) {
+            when (kind) {
+                "reading" -> "朗读证据"
+                "recitation" -> "背诵证据"
+                else -> "口语证据"
+            }
+        } else {
+            "结果"
         }
     }
 

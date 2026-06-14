@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.brainypal.shared
 
 import kotlinx.serialization.encodeToString
+import kotlinx.coroutines.runBlocking
 import me.rerere.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -59,6 +60,77 @@ class BrainyPalVoiceCommandApiTest {
     }
 
     @Test
+    fun `ask help voice command maps to generic action without mutating dictation`() {
+        val body = """
+            {
+              "intent": "ask_help",
+              "confidence": "medium",
+              "child_label": "我给你一个方向提示。",
+              "requires_clarification": false,
+              "raw_transcript_persistent": false,
+              "tts": {
+                "text": "先看已知条件。",
+                "context": "practice",
+                "locale": "zh-CN"
+              },
+              "provider": {
+                "provider": "fake_text",
+                "latency_ms": 18,
+                "failure_reason": null
+              }
+            }
+        """.trimIndent()
+
+        val response = JsonInstant.decodeFromString<BrainyPalVoiceCommandResponse>(body)
+
+        assertEquals(BrainyPalVoiceAction.ASK_HELP, response.toVoiceAction())
+        assertEquals(BrainyPalDictationCommand.UNKNOWN, response.toDictationCommand())
+    }
+
+    @Test
+    fun `voice interpreter prefers agent intent over local fallback`() = runBlocking {
+        val api = RecordingVoiceApi(
+            response = BrainyPalVoiceCommandResponse(
+                intent = "ask_help",
+                confidence = "medium",
+                childLabel = "我给你一个方向提示。",
+            )
+        )
+
+        val state = BrainyPalVoiceCommandInterpreter.interpret(
+            api = api,
+            transcript = "给我一个提示",
+            context = "practice",
+            audioPermissionGranted = true,
+            fallbackAction = BrainyPalVoiceAction.NEXT,
+        )
+
+        assertEquals("给我一个提示", api.lastRequest?.transcript)
+        assertEquals("practice", api.lastRequest?.context)
+        assertEquals(BrainyPalVoiceAction.ASK_HELP, state.action)
+        assertEquals(BrainyPalDictationCommand.UNKNOWN, state.dictationCommand)
+        assertFalse(state.showButtonFallback)
+    }
+
+    @Test
+    fun `voice interpreter fallback does not execute local action when agent call fails`() = runBlocking {
+        val api = ThrowingVoiceApi
+
+        val state = BrainyPalVoiceCommandInterpreter.interpret(
+            api = api,
+            transcript = "下一题",
+            context = "practice",
+            audioPermissionGranted = true,
+            fallbackAction = BrainyPalVoiceAction.NEXT,
+        )
+
+        assertEquals(BrainyPalVoiceControlPhase.FALLBACK, state.phase)
+        assertEquals(BrainyPalVoiceAction.UNKNOWN, state.action)
+        assertEquals(BrainyPalDictationCommand.UNKNOWN, state.dictationCommand)
+        assertTrue(state.showButtonFallback)
+    }
+
+    @Test
     fun `unknown voice command asks clarification and does not mutate dictation session`() {
         val body = """
             {
@@ -82,9 +154,31 @@ class BrainyPalVoiceCommandApiTest {
 
         val response = JsonInstant.decodeFromString<BrainyPalVoiceCommandResponse>(body)
 
+        assertEquals(BrainyPalVoiceAction.UNKNOWN, response.toVoiceAction())
         assertEquals(BrainyPalDictationCommand.UNKNOWN, response.toDictationCommand())
         assertTrue(response.requiresClarification)
         assertFalse(response.rawTranscriptPersistent)
         assertEquals("asr_timeout", response.provider.failureReason)
+    }
+
+    private class RecordingVoiceApi(
+        private val response: BrainyPalVoiceCommandResponse,
+    ) : BrainyPalVoiceApi {
+        var lastRequest: BrainyPalInterpretVoiceCommandRequest? = null
+
+        override suspend fun interpretVoiceCommand(
+            request: BrainyPalInterpretVoiceCommandRequest,
+        ): BrainyPalVoiceCommandResponse {
+            lastRequest = request
+            return response
+        }
+    }
+
+    private object ThrowingVoiceApi : BrainyPalVoiceApi {
+        override suspend fun interpretVoiceCommand(
+            request: BrainyPalInterpretVoiceCommandRequest,
+        ): BrainyPalVoiceCommandResponse {
+            error("voice api unavailable")
+        }
     }
 }

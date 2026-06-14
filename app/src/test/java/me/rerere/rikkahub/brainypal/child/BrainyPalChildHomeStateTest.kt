@@ -173,6 +173,13 @@ class BrainyPalChildHomeStateTest {
             error("dictation OCR evidence should not be submitted by home state")
         }
 
+        override suspend fun submitOralEvidence(
+            taskId: String,
+            request: BrainyPalSubmitOralEvidenceRequest,
+        ): BrainyPalPracticeAttemptSessionResponse {
+            error("oral evidence should not be submitted by home state")
+        }
+
         override suspend fun confirmDictationOcrEvidence(
             taskId: String,
             itemId: String,
@@ -236,6 +243,13 @@ class BrainyPalChildHomeStateTest {
             request: BrainyPalSubmitDictationOcrEvidenceRequest,
         ): BrainyPalChildPracticeTaskDetail {
             error("dictation OCR evidence should not be submitted by home state")
+        }
+
+        override suspend fun submitOralEvidence(
+            taskId: String,
+            request: BrainyPalSubmitOralEvidenceRequest,
+        ): BrainyPalPracticeAttemptSessionResponse {
+            error("oral evidence should not be submitted by home state")
         }
 
         override suspend fun confirmDictationOcrEvidence(

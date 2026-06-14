@@ -20,6 +20,11 @@ import me.rerere.rikkahub.brainypal.child.BrainyPalPracticeDrafts
 import me.rerere.rikkahub.brainypal.shared.BrainyPalRecordPracticeTaskAnswerRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalRequestPracticeTaskHelpRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalSubmitDictationOcrEvidenceRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalSubmitOralEvidenceRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalVoiceAction
+import me.rerere.rikkahub.brainypal.shared.BrainyPalVoiceApiFactory
+import me.rerere.rikkahub.brainypal.shared.BrainyPalVoiceCommandInterpreter
+import me.rerere.rikkahub.brainypal.shared.BrainyPalVoiceControlState
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.utils.UiState
 import kotlin.uuid.Uuid
@@ -47,6 +52,7 @@ data class BrainyPalPracticeTaskDetailState(
 class BrainyPalHomeVM(
     private val settingsStore: SettingsStore,
     private val apiFactory: BrainyPalChildApiFactory,
+    private val voiceApiFactory: BrainyPalVoiceApiFactory,
 ) : ViewModel() {
     private val chatScreen = Screen.Chat(id = Uuid.random().toString())
     private val _state = MutableStateFlow<UiState<BrainyPalChildHomeState>>(UiState.Loading)
@@ -288,6 +294,19 @@ class BrainyPalHomeVM(
         }
     }
 
+    fun submitOralEvidence(
+        taskId: String,
+        request: BrainyPalSubmitOralEvidenceRequest,
+    ) {
+        updatePracticeTask(
+            taskId = taskId,
+            successMessage = "已提交朗读/背诵结果，可以看复盘了",
+            pendingMessage = "正在提交朗读/背诵结果...",
+        ) {
+            submitOralEvidence(taskId = taskId, request = request).toTaskDetail()
+        }
+    }
+
     fun confirmDictationOcrEvidence(
         taskId: String,
         itemId: String,
@@ -308,6 +327,34 @@ class BrainyPalHomeVM(
                 ),
             )
         }
+    }
+
+    suspend fun interpretVoiceCommand(
+        context: String,
+        transcript: String,
+        fallbackAction: BrainyPalVoiceAction,
+        audioPermissionGranted: Boolean,
+    ): BrainyPalVoiceControlState {
+        val settings = settingsStore.settingsFlow
+            .filter { !it.init }
+            .first()
+        val connection = settings.brainyPalChildConnection
+        if (!connection.isConfigured()) {
+            return BrainyPalVoiceCommandInterpreter.fallbackState(
+                fallbackAction = fallbackAction,
+                audioPermissionGranted = audioPermissionGranted,
+            )
+        }
+        return BrainyPalVoiceCommandInterpreter.interpret(
+            api = voiceApiFactory.create(
+                BrainyPalChildModePolicy.agentServiceRootUrl(connection),
+                connection.apiKey,
+            ),
+            transcript = transcript,
+            context = context,
+            audioPermissionGranted = audioPermissionGranted,
+            fallbackAction = fallbackAction,
+        )
     }
 
     private fun updatePracticeTask(

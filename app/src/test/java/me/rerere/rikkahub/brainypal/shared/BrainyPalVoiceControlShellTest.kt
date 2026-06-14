@@ -18,8 +18,26 @@ class BrainyPalVoiceControlShellTest {
         )
 
         assertEquals(BrainyPalVoiceControlPhase.EXECUTING, state.phase)
+        assertEquals(BrainyPalVoiceAction.NEXT, state.action)
         assertEquals(BrainyPalDictationCommand.NEXT, state.dictationCommand)
         assertTrue(state.canUseVoice)
+        assertFalse(state.showButtonFallback)
+    }
+
+    @Test
+    fun `ask help command is executable without dictation mutation`() {
+        val state = BrainyPalVoiceControlShell.fromCommandResponse(
+            response = BrainyPalVoiceCommandResponse(
+                intent = "ask_help",
+                confidence = "medium",
+                childLabel = "我给你一个方向提示。",
+            ),
+            audioPermissionGranted = true,
+        )
+
+        assertEquals(BrainyPalVoiceControlPhase.EXECUTING, state.phase)
+        assertEquals(BrainyPalVoiceAction.ASK_HELP, state.action)
+        assertEquals(BrainyPalDictationCommand.UNKNOWN, state.dictationCommand)
         assertFalse(state.showButtonFallback)
     }
 
@@ -41,9 +59,28 @@ class BrainyPalVoiceControlShellTest {
         )
 
         assertEquals(BrainyPalVoiceControlPhase.FAILED, state.phase)
+        assertEquals(BrainyPalVoiceAction.UNKNOWN, state.action)
         assertEquals(BrainyPalDictationCommand.UNKNOWN, state.dictationCommand)
         assertTrue(state.showButtonFallback)
         assertEquals("语音服务刚才不稳定，可以直接点按钮继续。", state.childMessage)
+    }
+
+    @Test
+    fun `clarification response does not execute recognized action`() {
+        val state = BrainyPalVoiceControlShell.fromCommandResponse(
+            response = BrainyPalVoiceCommandResponse(
+                intent = "next",
+                confidence = "low",
+                childLabel = "我没听清，可以点按钮继续。",
+                requiresClarification = true,
+            ),
+            audioPermissionGranted = true,
+        )
+
+        assertEquals(BrainyPalVoiceControlPhase.FALLBACK, state.phase)
+        assertEquals(BrainyPalVoiceAction.UNKNOWN, state.action)
+        assertEquals(BrainyPalDictationCommand.UNKNOWN, state.dictationCommand)
+        assertTrue(state.showButtonFallback)
     }
 
     @Test

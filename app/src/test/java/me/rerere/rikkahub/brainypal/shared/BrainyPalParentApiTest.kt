@@ -593,4 +593,156 @@ class BrainyPalParentApiTest {
         assertFalse(JsonInstant.encodeToString(summary).contains("brainypal-local"))
         assertFalse(JsonInstant.encodeToString(summary).contains("apiKey"))
     }
+
+    @Test
+    fun `parent result detail decodes oral evidence without raw transcript`() {
+        val body = """
+            {
+              "task_id": "reading-task",
+              "title": "朗读短文",
+              "subject": "语文",
+              "mode": "reading",
+              "status": "completed",
+              "parent_summary": "孩子完成朗读，自评 4 分，重听 2 次。",
+              "result_status": "completed",
+              "items": [
+                {
+                  "item_id": "line_1",
+                  "prompt": "春天来了，小草从土里探出头。",
+                  "kind": "reading",
+                  "result_status": "completed",
+                  "parent_note": "停顿比上次稳定。",
+                  "correction_prompt": null,
+                  "expected_answer": null,
+                  "wrong_question_ref": null,
+                  "evidence": {
+                    "answer_value": "4",
+                    "answer_source": "oral_self_rating",
+                    "ocr_evidence": [],
+                    "oral_evidence": {
+                      "evidence_id": "oral_line_1",
+                      "self_rating": 4,
+                      "reread_count": 2,
+                      "stuck_points": ["第二句换气"],
+                      "audio_ref": "local-cache://oral/line_1.wav",
+                      "text_hidden_during_attempt": false
+                    }
+                  }
+                }
+              ],
+              "next_actions": [
+                {
+                  "kind": "review",
+                  "title": "明天再读一次",
+                  "body": "保持慢速清楚朗读。",
+                  "item_ids": ["line_1"]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val detail = JsonInstant.decodeFromString<BrainyPalParentPracticeTaskResultDetailResponse>(body)
+        val evidence = detail.items.single().evidence.oralEvidence
+
+        assertEquals("reading-task", detail.taskId)
+        assertEquals("孩子完成朗读，自评 4 分，重听 2 次。", detail.parentSummary)
+        assertEquals(4, evidence?.selfRating)
+        assertEquals(2, evidence?.rereadCount)
+        assertEquals(listOf("第二句换气"), evidence?.stuckPoints)
+        assertFalse(JsonInstant.encodeToString(detail).contains("transcript"))
+    }
+
+    @Test
+    fun `parent learning records summary decodes counts and latest records`() {
+        val body = """
+            {
+              "total_count": 2,
+              "record_type_counts": {
+                "practice": 1,
+                "recitation": 1
+              },
+              "knowledge_points": ["角平分线", "背诵节奏"],
+              "latest_records": [
+                {
+                  "record_id": "practice-attempt-001",
+                  "record_type": "practice",
+                  "subject": "数学",
+                  "captured_at": "2026-06-14T09:00:00+08:00",
+                  "source_refs": ["practice_task://task-geometry"],
+                  "knowledge_points": ["角平分线"],
+                  "parent_summary": "几何题对角平分线关系还不稳。",
+                  "strategy_version_id": "strategy_math",
+                  "wiki_path": "learning_records/20260614-090000-practice-attempt-001.md"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val summary = JsonInstant.decodeFromString<BrainyPalParentLearningRecordsSummaryResponse>(body)
+
+        assertEquals(2, summary.totalCount)
+        assertEquals(1, summary.recordTypeCounts["practice"])
+        assertEquals(listOf("角平分线", "背诵节奏"), summary.knowledgePoints)
+        assertEquals("几何题对角平分线关系还不稳。", summary.latestRecords.single().parentSummary)
+        assertEquals("strategy_math", summary.latestRecords.single().strategyVersionId)
+    }
+
+    @Test
+    fun `parent strategy requests and responses keep draft confirmation contract`() {
+        val request = BrainyPalCreateStrategyRequest(
+            parentGoalText = "这周朗读多鼓励，提示慢一点，不直接说答案。",
+            evidenceRefs = listOf("parent_chat://strategy_1"),
+            remainingMinutes = 20,
+            moodSignal = "calm",
+        )
+        val requestJson = JsonInstant.encodeToString(request)
+
+        assertTrue(requestJson.contains("\"parent_goal_text\""))
+        assertTrue(requestJson.contains("\"evidence_refs\""))
+
+        val body = """
+            {
+              "status": "draft",
+              "strategy": {
+                "version_id": "strategy_review_prompt_001",
+                "scope": "review_prompt",
+                "status": "draft",
+                "parent_goal_text": "这周朗读多鼓励，提示慢一点，不直接说答案。",
+                "child_facing_goal": "我会先鼓励你说出思路，再给一点点方向。",
+                "rationale": "来自家长确认的引导方向。",
+                "evidence_refs": ["parent_chat://strategy_1"],
+                "created_at": "2026-06-14T09:00:00+08:00",
+                "active_from": "2026-06-14T09:00:00+08:00",
+                "active_until": "2026-06-21T09:00:00+08:00",
+                "parent_confirmed_at": null,
+                "retired_at": null
+              },
+              "child_plan": {
+                "intensity": "low",
+                "child_message": "我会先鼓励你说出思路，再给一点点方向。",
+                "suggested_action": "先问孩子思路，再给小提示。",
+                "opt_out_allowed": true
+              },
+              "parent_message": "已生成策略候选，确认后才会生效。",
+              "filtered_terms": []
+            }
+        """.trimIndent()
+
+        val created = JsonInstant.decodeFromString<BrainyPalCreateStrategyResponse>(body)
+        val list = JsonInstant.decodeFromString<BrainyPalListStrategiesResponse>(
+            """{"items":[${JsonInstant.encodeToString(created.strategy)}]}"""
+        )
+        val activated = JsonInstant.decodeFromString<BrainyPalStrategyVersion>(
+            JsonInstant.encodeToString(created.strategy.copy(status = "active"))
+        )
+
+        assertEquals("draft", created.status)
+        assertEquals("strategy_review_prompt_001", created.strategy.versionId)
+        assertEquals("我会先鼓励你说出思路，再给一点点方向。", created.strategy.childFacingGoal)
+        assertEquals("low", created.childPlan.intensity)
+        assertEquals("先问孩子思路，再给小提示。", created.childPlan.suggestedAction)
+        assertTrue(created.childPlan.optOutAllowed)
+        assertEquals("draft", list.items.single().status)
+        assertEquals("active", activated.status)
+    }
 }

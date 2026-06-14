@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.brainypal.shared
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -71,15 +72,142 @@ data class BrainyPalVoiceCommandResponse(
     val tts: BrainyPalVoiceTtsPayload = BrainyPalVoiceTtsPayload(),
     val provider: BrainyPalVoiceProviderPayload = BrainyPalVoiceProviderPayload(),
 ) {
-    fun toDictationCommand(): BrainyPalDictationCommand {
+    fun toVoiceAction(): BrainyPalVoiceAction {
         return when (intent) {
-            "repeat" -> BrainyPalDictationCommand.REPEAT
-            "next" -> BrainyPalDictationCommand.NEXT
-            "dont_know" -> BrainyPalDictationCommand.DONT_KNOW
-            "pause" -> BrainyPalDictationCommand.PAUSE
-            "resume" -> BrainyPalDictationCommand.RESUME
+            "repeat" -> BrainyPalVoiceAction.REPEAT
+            "next" -> BrainyPalVoiceAction.NEXT
+            "dont_know" -> BrainyPalVoiceAction.DONT_KNOW
+            "pause" -> BrainyPalVoiceAction.PAUSE
+            "resume" -> BrainyPalVoiceAction.RESUME
+            "ask_help" -> BrainyPalVoiceAction.ASK_HELP
+            else -> BrainyPalVoiceAction.UNKNOWN
+        }
+    }
+
+    fun toDictationCommand(): BrainyPalDictationCommand {
+        return when (toVoiceAction()) {
+            BrainyPalVoiceAction.REPEAT -> BrainyPalDictationCommand.REPEAT
+            BrainyPalVoiceAction.NEXT -> BrainyPalDictationCommand.NEXT
+            BrainyPalVoiceAction.DONT_KNOW -> BrainyPalDictationCommand.DONT_KNOW
+            BrainyPalVoiceAction.PAUSE -> BrainyPalDictationCommand.PAUSE
+            BrainyPalVoiceAction.RESUME -> BrainyPalDictationCommand.RESUME
             else -> BrainyPalDictationCommand.UNKNOWN
         }
+    }
+}
+
+enum class BrainyPalVoiceAction {
+    REPEAT,
+    NEXT,
+    DONT_KNOW,
+    PAUSE,
+    RESUME,
+    ASK_HELP,
+    UNKNOWN,
+}
+
+fun BrainyPalVoiceAction.toDictationCommand(): BrainyPalDictationCommand {
+    return when (this) {
+        BrainyPalVoiceAction.REPEAT -> BrainyPalDictationCommand.REPEAT
+        BrainyPalVoiceAction.NEXT -> BrainyPalDictationCommand.NEXT
+        BrainyPalVoiceAction.DONT_KNOW -> BrainyPalDictationCommand.DONT_KNOW
+        BrainyPalVoiceAction.PAUSE -> BrainyPalDictationCommand.PAUSE
+        BrainyPalVoiceAction.RESUME -> BrainyPalDictationCommand.RESUME
+        else -> BrainyPalDictationCommand.UNKNOWN
+    }
+}
+
+fun BrainyPalDictationCommand.toVoiceAction(): BrainyPalVoiceAction {
+    return when (this) {
+        BrainyPalDictationCommand.REPEAT -> BrainyPalVoiceAction.REPEAT
+        BrainyPalDictationCommand.NEXT -> BrainyPalVoiceAction.NEXT
+        BrainyPalDictationCommand.DONT_KNOW -> BrainyPalVoiceAction.DONT_KNOW
+        BrainyPalDictationCommand.PAUSE -> BrainyPalVoiceAction.PAUSE
+        BrainyPalDictationCommand.RESUME -> BrainyPalVoiceAction.RESUME
+        else -> BrainyPalVoiceAction.UNKNOWN
+    }
+}
+
+object BrainyPalVoiceCommandLocalMatcher {
+    fun match(text: String): BrainyPalVoiceAction {
+        val normalized = text.lowercase()
+            .replace(" ", "")
+            .replace("，", "")
+            .replace("。", "")
+            .replace(",", "")
+            .replace(".", "")
+        if (normalized.isBlank()) return BrainyPalVoiceAction.UNKNOWN
+        if (listOf("提示", "帮我", "help", "hint").any(normalized::contains)) {
+            return BrainyPalVoiceAction.ASK_HELP
+        }
+        if (listOf("再听", "再说", "重复", "repeat", "again").any(normalized::contains)) {
+            return BrainyPalVoiceAction.REPEAT
+        }
+        if (listOf("下一", "下一个", "下一题", "next").any(normalized::contains)) {
+            return BrainyPalVoiceAction.NEXT
+        }
+        if (listOf("不会", "不知道", "dontknow", "don'tknow").any(normalized::contains)) {
+            return BrainyPalVoiceAction.DONT_KNOW
+        }
+        if (listOf("暂停", "停一下", "pause", "holdon").any(normalized::contains)) {
+            return BrainyPalVoiceAction.PAUSE
+        }
+        if (listOf("继续", "开始", "resume", "goon").any(normalized::contains)) {
+            return BrainyPalVoiceAction.RESUME
+        }
+        return BrainyPalVoiceAction.UNKNOWN
+    }
+}
+
+object BrainyPalVoiceCommandInterpreter {
+    suspend fun interpret(
+        api: BrainyPalVoiceApi,
+        transcript: String,
+        context: String,
+        audioPermissionGranted: Boolean,
+        fallbackAction: BrainyPalVoiceAction = BrainyPalVoiceAction.UNKNOWN,
+        locale: String = "zh-CN",
+        provider: String = "app_asr",
+    ): BrainyPalVoiceControlState {
+        return try {
+            val response = api.interpretVoiceCommand(
+                BrainyPalInterpretVoiceCommandRequest(
+                    transcript = transcript,
+                    context = context,
+                    locale = locale,
+                    provider = provider,
+                )
+            )
+            BrainyPalVoiceControlShell.fromCommandResponse(
+                response = response,
+                audioPermissionGranted = audioPermissionGranted,
+            )
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            fallbackState(
+                fallbackAction = fallbackAction,
+                audioPermissionGranted = audioPermissionGranted,
+            )
+        }
+    }
+
+    fun fallbackState(
+        fallbackAction: BrainyPalVoiceAction,
+        audioPermissionGranted: Boolean,
+    ): BrainyPalVoiceControlState {
+        val hasAction = fallbackAction != BrainyPalVoiceAction.UNKNOWN
+        return BrainyPalVoiceControlState(
+            phase = BrainyPalVoiceControlPhase.FALLBACK,
+            childMessage = if (hasAction) {
+                "语音理解服务暂时不稳定，可以点按钮继续，避免误操作。"
+            } else {
+                "语音理解服务暂时不稳定，可以直接点按钮继续。"
+            },
+            canUseVoice = audioPermissionGranted,
+            showButtonFallback = true,
+            action = BrainyPalVoiceAction.UNKNOWN,
+            dictationCommand = BrainyPalDictationCommand.UNKNOWN,
+        )
     }
 }
 
@@ -114,6 +242,7 @@ data class BrainyPalVoiceControlState(
     val childMessage: String,
     val canUseVoice: Boolean,
     val showButtonFallback: Boolean,
+    val action: BrainyPalVoiceAction = BrainyPalVoiceAction.UNKNOWN,
     val dictationCommand: BrainyPalDictationCommand = BrainyPalDictationCommand.UNKNOWN,
 )
 
@@ -142,9 +271,15 @@ object BrainyPalVoiceControlShell {
     ): BrainyPalVoiceControlState {
         val providerFailed = response.provider.failureReason != null
         val fallback = providerFailed || response.requiresClarification || !audioPermissionGranted
+        val executableAction = if (fallback) {
+            BrainyPalVoiceAction.UNKNOWN
+        } else {
+            response.toVoiceAction()
+        }
         return BrainyPalVoiceControlState(
             phase = when {
                 providerFailed -> BrainyPalVoiceControlPhase.FAILED
+                fallback -> BrainyPalVoiceControlPhase.FALLBACK
                 response.intent == "unknown" -> BrainyPalVoiceControlPhase.FALLBACK
                 else -> BrainyPalVoiceControlPhase.EXECUTING
             },
@@ -153,7 +288,8 @@ object BrainyPalVoiceControlShell {
             },
             canUseVoice = audioPermissionGranted && !providerFailed,
             showButtonFallback = fallback,
-            dictationCommand = response.toDictationCommand(),
+            action = executableAction,
+            dictationCommand = executableAction.toDictationCommand(),
         )
     }
 }

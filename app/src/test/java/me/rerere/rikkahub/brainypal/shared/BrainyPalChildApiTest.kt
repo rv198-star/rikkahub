@@ -332,6 +332,132 @@ class BrainyPalChildApiTest {
     }
 
     @Test
+    fun `oral submission request encodes reading and recitation evidence`() {
+        val json = JsonInstant.encodeToString(
+            BrainyPalSubmitOralEvidenceRequest(
+                attemptSessionId = "attempt_reading",
+                items = listOf(
+                    BrainyPalSubmitOralEvidenceItemRequest(
+                        itemId = "p1",
+                        selfRating = 4,
+                        rereadCount = 2,
+                        stuckPoints = listOf("第三句停顿"),
+                        audioRef = "upload://reading-p1.m4a",
+                        transcript = "孩子侧可见转写",
+                        textHiddenDuringAttempt = true,
+                    )
+                )
+            )
+        )
+
+        assertTrue(json.contains("\"attempt_session_id\":\"attempt_reading\""))
+        assertTrue(json.contains("\"item_id\":\"p1\""))
+        assertTrue(json.contains("\"self_rating\":4"))
+        assertTrue(json.contains("\"reread_count\":2"))
+        assertTrue(json.contains("\"stuck_points\":[\"第三句停顿\"]"))
+        assertTrue(json.contains("\"audio_ref\":\"upload://reading-p1.m4a\""))
+        assertTrue(json.contains("\"transcript\":\"孩子侧可见转写\""))
+        assertTrue(json.contains("\"text_hidden_during_attempt\":true"))
+    }
+
+    @Test
+    fun `oral submission response decodes attempt result and oral evidence`() {
+        val body = """
+            {
+              "task_id": "recitation-task",
+              "attempt_session_id": "attempt_recitation",
+              "status": "submitted",
+              "channel": "app",
+              "help_budget": 1,
+              "help_used": 0,
+              "remaining_help": 1,
+              "total_items": 1,
+              "answered_items": 1,
+              "submit_available": false,
+              "task": {
+                "task_id": "recitation-task",
+                "title": "背诵《春晓》",
+                "subject": "语文",
+                "mode": "recitation",
+                "instructions": "先听再背",
+                "items": [
+                  {
+                    "item_id": "line_1",
+                    "kind": "recitation",
+                    "prompt": "春眠不觉晓，处处闻啼鸟。",
+                    "choices": [],
+                    "source_refs": ["material://poem/chunxiao#line-1"]
+                  }
+                ]
+              },
+              "answers": {},
+              "evidence_by_item": {},
+              "oral_evidence_by_item": {
+                "line_1": {
+                  "evidence_id": "oral_1",
+                  "item_id": "line_1",
+                  "self_rating": 3,
+                  "reread_count": 4,
+                  "stuck_points": ["第二句总要看提示"],
+                  "audio_ref": null,
+                  "transcript": "孩子侧可见转写",
+                  "text_hidden_during_attempt": true,
+                  "created_at": "2026-06-14T09:00:00+08:00"
+                }
+              },
+              "result": {
+                "status": "completed",
+                "child_summary": "背诵完成，第二句还可以再练。",
+                "parent_summary": "背诵完成；重读 4 次；卡点：第二句总要看提示。",
+                "item_results": {
+                  "line_1": {
+                    "status": "ungraded",
+                    "child_feedback": "你完成了这一段。",
+                    "parent_note": "孩子自评 3 分。",
+                    "evidence_source": "app",
+                    "confidence": null,
+                    "correction_prompt": null,
+                    "expected_answer": null,
+                    "wrong_question_ref": null
+                  }
+                },
+                "review_blocks": [
+                  {
+                    "kind": "encouragement",
+                    "title": "完成了",
+                    "body": "先肯定完成。",
+                    "item_ids": ["line_1"]
+                  }
+                ],
+                "learning_record": {
+                  "record_type": "recitation",
+                  "subject": "语文",
+                  "source_refs": ["material://poem/chunxiao#line-1"],
+                  "child_summary": "背诵完成，第二句还可以再练。",
+                  "parent_summary": "背诵完成；重读 4 次；卡点：第二句总要看提示。",
+                  "knowledge_points": ["春晓"],
+                  "strategy_version_id": null
+                },
+                "created_at": "2026-06-14T09:01:00+08:00"
+              }
+            }
+        """.trimIndent()
+
+        val response = JsonInstant.decodeFromString<BrainyPalPracticeAttemptSessionResponse>(body)
+
+        assertEquals("recitation-task", response.taskId)
+        assertEquals("attempt_recitation", response.attemptSessionId)
+        assertEquals("submitted", response.status)
+        assertEquals("背诵《春晓》", response.task.title)
+        assertEquals("recitation", response.task.mode)
+        assertEquals(true, response.oralEvidenceByItem["line_1"]?.textHiddenDuringAttempt)
+        assertEquals("孩子侧可见转写", response.oralEvidenceByItem["line_1"]?.transcript)
+        assertEquals("recitation", response.result?.learningRecord?.recordType)
+        assertEquals("attempt_recitation", response.toTaskDetail().attemptSessionId)
+        assertTrue(response.toTaskDetail().result?.parentSummary.orEmpty().contains("重读 4 次"))
+    }
+
+    @Test
     fun `agent task spec decodes dictation orchestration policy`() {
         val body = """
             {

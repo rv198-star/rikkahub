@@ -116,6 +116,34 @@ interface BrainyPalParentApi {
         @Path("task_id") taskId: String,
     ): BrainyPalParentPracticeTaskSummaryResponse
 
+    @GET("/api/v1/parent/practice-tasks/{task_id}/result")
+    suspend fun getPracticeTaskResult(
+        @Path("task_id") taskId: String,
+    ): BrainyPalParentPracticeTaskResultDetailResponse
+
+    @GET("/api/v1/parent/learning-records/summary")
+    suspend fun getLearningRecordsSummary(
+        @Query("limit") limit: Int = 20,
+    ): BrainyPalParentLearningRecordsSummaryResponse
+
+    @GET("/api/v1/parent/strategies")
+    suspend fun listStrategies(): BrainyPalListStrategiesResponse
+
+    @POST("/api/v1/parent/strategies")
+    suspend fun createStrategy(
+        @Body request: BrainyPalCreateStrategyRequest,
+    ): BrainyPalCreateStrategyResponse
+
+    @POST("/api/v1/parent/strategies/{version_id}/activate")
+    suspend fun activateStrategy(
+        @Path("version_id") versionId: String,
+    ): BrainyPalStrategyVersion
+
+    @POST("/api/v1/parent/strategies/{version_id}/pause")
+    suspend fun pauseStrategy(
+        @Path("version_id") versionId: String,
+    ): BrainyPalStrategyVersion
+
     @POST("/api/v1/parent/practice-tasks/dictation")
     suspend fun createDictationPracticeTask(
         @Body request: BrainyPalCreateDictationPracticeTaskRequest,
@@ -143,6 +171,199 @@ interface BrainyPalParentApi {
 @Serializable
 data class BrainyPalParentPracticeTaskListResponse(
     val items: List<BrainyPalChildPracticeTaskDetail> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalParentPracticeEvidenceBoundingBoxView(
+    val page: Int = 1,
+    val x: Float,
+    val y: Float,
+    val width: Float,
+    val height: Float,
+)
+
+@Serializable
+data class BrainyPalParentPracticeOcrEvidenceView(
+    @SerialName("evidence_id")
+    val evidenceId: String,
+    @SerialName("source_image_ref")
+    val sourceImageRef: String,
+    @SerialName("recognized_answer")
+    val recognizedAnswer: String,
+    val confidence: Float? = null,
+    @SerialName("bounding_box")
+    val boundingBox: BrainyPalParentPracticeEvidenceBoundingBoxView? = null,
+)
+
+@Serializable
+data class BrainyPalParentPracticeOralEvidenceView(
+    @SerialName("evidence_id")
+    val evidenceId: String,
+    @SerialName("self_rating")
+    val selfRating: Int,
+    @SerialName("reread_count")
+    val rereadCount: Int = 0,
+    @SerialName("stuck_points")
+    val stuckPoints: List<String> = emptyList(),
+    @SerialName("audio_ref")
+    val audioRef: String? = null,
+    @SerialName("text_hidden_during_attempt")
+    val textHiddenDuringAttempt: Boolean = false,
+)
+
+@Serializable
+data class BrainyPalParentPracticeItemEvidenceView(
+    @SerialName("answer_value")
+    val answerValue: String? = null,
+    @SerialName("answer_source")
+    val answerSource: String? = null,
+    @SerialName("ocr_evidence")
+    val ocrEvidence: List<BrainyPalParentPracticeOcrEvidenceView> = emptyList(),
+    @SerialName("oral_evidence")
+    val oralEvidence: BrainyPalParentPracticeOralEvidenceView? = null,
+)
+
+@Serializable
+data class BrainyPalParentPracticeResultItemView(
+    @SerialName("item_id")
+    val itemId: String,
+    val prompt: String,
+    val kind: String,
+    @SerialName("result_status")
+    val resultStatus: String,
+    @SerialName("parent_note")
+    val parentNote: String = "",
+    @SerialName("correction_prompt")
+    val correctionPrompt: String? = null,
+    @SerialName("expected_answer")
+    val expectedAnswer: String? = null,
+    @SerialName("wrong_question_ref")
+    val wrongQuestionRef: String? = null,
+    val evidence: BrainyPalParentPracticeItemEvidenceView = BrainyPalParentPracticeItemEvidenceView(),
+)
+
+@Serializable
+data class BrainyPalParentPracticeNextActionView(
+    val kind: String,
+    val title: String,
+    val body: String,
+    @SerialName("item_ids")
+    val itemIds: List<String> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalParentPracticeTaskResultDetailResponse(
+    @SerialName("task_id")
+    val taskId: String,
+    val title: String,
+    val subject: String? = null,
+    val mode: String = "practice",
+    val status: String,
+    @SerialName("parent_summary")
+    val parentSummary: String,
+    @SerialName("result_status")
+    val resultStatus: String,
+    val items: List<BrainyPalParentPracticeResultItemView> = emptyList(),
+    @SerialName("next_actions")
+    val nextActions: List<BrainyPalParentPracticeNextActionView> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalParentLearningRecordSummaryView(
+    @SerialName("record_id")
+    val recordId: String,
+    @SerialName("record_type")
+    val recordType: String,
+    val subject: String? = null,
+    @SerialName("captured_at")
+    val capturedAt: String,
+    @SerialName("source_refs")
+    val sourceRefs: List<String> = emptyList(),
+    @SerialName("knowledge_points")
+    val knowledgePoints: List<String> = emptyList(),
+    @SerialName("parent_summary")
+    val parentSummary: String,
+    @SerialName("strategy_version_id")
+    val strategyVersionId: String? = null,
+    @SerialName("wiki_path")
+    val wikiPath: String,
+)
+
+@Serializable
+data class BrainyPalParentLearningRecordsSummaryResponse(
+    @SerialName("total_count")
+    val totalCount: Int = 0,
+    @SerialName("record_type_counts")
+    val recordTypeCounts: Map<String, Int> = emptyMap(),
+    @SerialName("knowledge_points")
+    val knowledgePoints: List<String> = emptyList(),
+    @SerialName("latest_records")
+    val latestRecords: List<BrainyPalParentLearningRecordSummaryView> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalCreateStrategyRequest(
+    @SerialName("parent_goal_text")
+    val parentGoalText: String,
+    @SerialName("evidence_refs")
+    val evidenceRefs: List<String>,
+    @SerialName("remaining_minutes")
+    val remainingMinutes: Int? = null,
+    @SerialName("mood_signal")
+    val moodSignal: String? = null,
+)
+
+@Serializable
+data class BrainyPalChildGuidancePlan(
+    val intensity: String = "",
+    @SerialName("child_message")
+    val childMessage: String = "",
+    @SerialName("suggested_action")
+    val suggestedAction: String = "",
+    @SerialName("opt_out_allowed")
+    val optOutAllowed: Boolean = true,
+)
+
+@Serializable
+data class BrainyPalStrategyVersion(
+    @SerialName("version_id")
+    val versionId: String,
+    val scope: String,
+    val status: String,
+    @SerialName("parent_goal_text")
+    val parentGoalText: String,
+    @SerialName("child_facing_goal")
+    val childFacingGoal: String,
+    val rationale: String,
+    @SerialName("evidence_refs")
+    val evidenceRefs: List<String> = emptyList(),
+    @SerialName("created_at")
+    val createdAt: String,
+    @SerialName("active_from")
+    val activeFrom: String,
+    @SerialName("active_until")
+    val activeUntil: String,
+    @SerialName("parent_confirmed_at")
+    val parentConfirmedAt: String? = null,
+    @SerialName("retired_at")
+    val retiredAt: String? = null,
+)
+
+@Serializable
+data class BrainyPalCreateStrategyResponse(
+    val status: String,
+    val strategy: BrainyPalStrategyVersion,
+    @SerialName("child_plan")
+    val childPlan: BrainyPalChildGuidancePlan = BrainyPalChildGuidancePlan(),
+    @SerialName("parent_message")
+    val parentMessage: String = "",
+    @SerialName("filtered_terms")
+    val filteredTerms: List<String> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalListStrategiesResponse(
+    val items: List<BrainyPalStrategyVersion> = emptyList(),
 )
 
 @Serializable

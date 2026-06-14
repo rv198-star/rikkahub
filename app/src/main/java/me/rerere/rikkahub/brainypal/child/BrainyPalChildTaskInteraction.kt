@@ -21,6 +21,7 @@ object BrainyPalChildTaskInteraction {
         val spec = detail.taskSpec
         return when (detail.taskType) {
             "dictation" -> dictationPlan(detail, spec)
+            "reading" -> readingPlan(detail, spec)
             "recitation" -> recitationPlan(detail, spec)
             "knowledge_review" -> reviewPlan(detail, spec)
             else -> practicePlan(detail, spec)
@@ -76,6 +77,23 @@ object BrainyPalChildTaskInteraction {
             submitLabel = "提交背诵结果",
             quickActions = emptyList(),
             revealAnswerBeforeSubmit = spec?.guardrails?.revealAnswerBeforeSubmit ?: false,
+            usesDedicatedFlow = true,
+        )
+    }
+
+    private fun readingPlan(
+        detail: BrainyPalChildPracticeTaskDetail,
+        spec: BrainyPalAgentTaskSpec?,
+    ): BrainyPalChildTaskInteractionPlan {
+        return BrainyPalChildTaskInteractionPlan(
+            kindLabel = detail.taskKindLabel,
+            primaryActionLabel = "开始朗读",
+            brief = spec?.childBrief?.takeIf { it.isNotBlank() } ?: "先听一遍，再自己朗读一段。",
+            answerLabel = "朗读后给自己 1-5 分",
+            evidenceLabel = "哪里读得不顺，或录音留证据",
+            submitLabel = "提交朗读结果",
+            quickActions = emptyList(),
+            revealAnswerBeforeSubmit = true,
             usesDedicatedFlow = true,
         )
     }
