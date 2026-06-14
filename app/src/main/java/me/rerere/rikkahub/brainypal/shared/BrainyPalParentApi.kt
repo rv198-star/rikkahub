@@ -3,10 +3,13 @@ package me.rerere.rikkahub.brainypal.shared
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import me.rerere.rikkahub.utils.JsonInstant
+import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
+import retrofit2.http.Part
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -19,6 +22,33 @@ interface BrainyPalParentApi {
     suspend fun importTextMaterial(
         @Body request: BrainyPalImportTextMaterialRequest,
     ): BrainyPalParentMaterial
+
+    @POST("/api/v1/parent/materials/search-web")
+    suspend fun searchWebMaterials(
+        @Body request: BrainyPalParentWebMaterialSearchRequest,
+    ): BrainyPalParentWebMaterialSearchResponse
+
+    @POST("/api/v1/parent/chat-triggers")
+    suspend fun createChatTrigger(
+        @Body request: BrainyPalParentChatTriggerRequest,
+    ): BrainyPalParentChatTriggerResponse
+
+    @Multipart
+    @POST("/api/v1/parent/photo-scans")
+    suspend fun createPhotoScan(
+        @Part file: MultipartBody.Part,
+    ): BrainyPalParentPhotoScanSnapshot
+
+    @GET("/api/v1/parent/photo-scans/{scan_id}")
+    suspend fun getPhotoScan(
+        @Path("scan_id") scanId: String,
+    ): BrainyPalParentPhotoScanSnapshot
+
+    @POST("/api/v1/parent/photo-scans/{scan_id}/confirm")
+    suspend fun confirmPhotoScan(
+        @Path("scan_id") scanId: String,
+        @Body request: BrainyPalConfirmPhotoScanRequest,
+    ): BrainyPalConfirmPhotoScanResponse
 
     @POST("/api/v1/parent/import-sessions")
     suspend fun createImportSession(
@@ -216,6 +246,173 @@ data class BrainyPalCreateParentImportSessionRequest(
 )
 
 @Serializable
+data class BrainyPalParentWebMaterialSearchRequest(
+    val query: String,
+    val subject: String? = null,
+    @SerialName("grade_band")
+    val gradeBand: String? = null,
+    val language: String = "zh-CN",
+    @SerialName("source_set")
+    val sourceSet: String = "public_domain",
+    @SerialName("max_candidates")
+    val maxCandidates: Int = 3,
+)
+
+@Serializable
+data class BrainyPalParentWebMaterialSearchResponse(
+    val query: String,
+    val items: List<BrainyPalParentMaterial> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalParentWebMaterialSource(
+    @SerialName("source_url")
+    val sourceUrl: String,
+    val title: String,
+    @SerialName("source_type")
+    val sourceType: String,
+    val snippet: String,
+    @SerialName("uncertainty_note")
+    val uncertaintyNote: String,
+)
+
+@Serializable
+data class BrainyPalParentChatTriggerRequest(
+    val message: String,
+    val title: String? = null,
+    val subject: String? = null,
+)
+
+@Serializable
+data class BrainyPalParentChatStructuredAction(
+    val type: String,
+    val label: String,
+    @SerialName("requires_confirmation")
+    val requiresConfirmation: Boolean,
+)
+
+@Serializable
+data class BrainyPalParentChatStatusSummary(
+    @SerialName("privacy_level")
+    val privacyLevel: String = "task_summary_only",
+    val headline: String,
+    val metrics: Map<String, Int> = emptyMap(),
+    @SerialName("learning_blockers")
+    val learningBlockers: List<String> = emptyList(),
+    @SerialName("evidence_scope")
+    val evidenceScope: String = "task_related_summary",
+)
+
+@Serializable
+data class BrainyPalParentChatStrategyCandidate(
+    val status: String = "needs_confirmation",
+    @SerialName("parent_goal_text")
+    val parentGoalText: String,
+    @SerialName("allowed_effects")
+    val allowedEffects: List<String> = emptyList(),
+    @SerialName("child_answer_policy")
+    val childAnswerPolicy: String = "no_final_answers_before_submission",
+    @SerialName("confirmation_label")
+    val confirmationLabel: String = "确认应用策略",
+)
+
+@Serializable
+data class BrainyPalParentChatTriggerResponse(
+    val intent: String,
+    @SerialName("requires_confirmation")
+    val requiresConfirmation: Boolean,
+    @SerialName("structured_action")
+    val structuredAction: BrainyPalParentChatStructuredAction? = null,
+    @SerialName("import_session")
+    val importSession: BrainyPalParentImportSession? = null,
+    @SerialName("status_summary")
+    val statusSummary: BrainyPalParentChatStatusSummary? = null,
+    @SerialName("strategy_candidate")
+    val strategyCandidate: BrainyPalParentChatStrategyCandidate? = null,
+    val message: String,
+)
+
+@Serializable
+data class BrainyPalParentPhotoScanSnapshot(
+    @SerialName("scan_id")
+    val scanId: String,
+    @SerialName("captured_at")
+    val capturedAt: String,
+    val candidates: List<BrainyPalParentPhotoScanCandidate> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalParentPhotoScanCandidate(
+    @SerialName("candidate_id")
+    val candidateId: String,
+    @SerialName("question_number")
+    val questionNumber: String? = null,
+    @SerialName("question_text")
+    val questionText: String,
+    @SerialName("child_answer")
+    val childAnswer: String? = null,
+    @SerialName("work_observed")
+    val workObserved: String? = null,
+    val status: String,
+    val recommendation: String,
+    val confidence: Float,
+    val verification: BrainyPalParentPhotoScanVerification? = null,
+)
+
+@Serializable
+data class BrainyPalParentPhotoScanVerification(
+    @SerialName("reference_answer")
+    val referenceAnswer: String? = null,
+    val judgement: String,
+    val explanation: String,
+    val confidence: Float,
+    @SerialName("requires_parent_review")
+    val requiresParentReview: Boolean = false,
+)
+
+@Serializable
+data class BrainyPalConfirmPhotoScanRequest(
+    @SerialName("candidate_ids")
+    val candidateIds: List<String>? = null,
+    val candidates: List<BrainyPalConfirmPhotoScanCandidateRequest>? = null,
+    @SerialName("parent_note")
+    val parentNote: String? = null,
+)
+
+@Serializable
+data class BrainyPalConfirmPhotoScanCandidateRequest(
+    @SerialName("candidate_id")
+    val candidateId: String,
+    @SerialName("question_text")
+    val questionText: String? = null,
+    @SerialName("child_answer")
+    val childAnswer: String? = null,
+    @SerialName("work_observed")
+    val workObserved: String? = null,
+    val status: String? = null,
+)
+
+@Serializable
+data class BrainyPalConfirmPhotoScanResponse(
+    @SerialName("scan_id")
+    val scanId: String,
+    @SerialName("written_questions")
+    val writtenQuestions: List<BrainyPalWrittenQuestionResponse> = emptyList(),
+    @SerialName("skipped_candidates")
+    val skippedCandidates: List<String> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalWrittenQuestionResponse(
+    @SerialName("candidate_id")
+    val candidateId: String,
+    @SerialName("question_id")
+    val questionId: String,
+    @SerialName("wiki_path")
+    val wikiPath: String,
+)
+
+@Serializable
 data class BrainyPalCreatePendingTaskFromImportSessionRequest(
     @SerialName("help_limit")
     val helpLimit: Int = 3,
@@ -358,6 +555,7 @@ data class BrainyPalCreateTaskFromMaterialRequest(
     val helpLimit: Int = 3,
     @SerialName("due_at")
     val dueAt: String? = null,
+    val activate: Boolean = true,
 )
 
 @Serializable
@@ -384,6 +582,15 @@ data class BrainyPalParentMaterial(
     val candidateTaskTypes: List<String> = emptyList(),
     @SerialName("source_refs")
     val sourceRefs: List<String> = emptyList(),
+    @SerialName("source_candidates")
+    val sourceCandidates: List<BrainyPalParentWebMaterialSource> = emptyList(),
+    @SerialName("search_query")
+    val searchQuery: String? = null,
+    val confidence: Float? = null,
+    @SerialName("uncertainty_note")
+    val uncertaintyNote: String? = null,
+    @SerialName("confirm_url")
+    val confirmUrl: String? = null,
     @SerialName("requires_parent_confirmation")
     val requiresParentConfirmation: Boolean = true,
     @SerialName("parent_note")
@@ -679,12 +886,26 @@ object BrainyPalParentMaterialComposer {
         taskType: String? = null,
         helpLimit: Int = 3,
         dueAt: String? = null,
+        activate: Boolean = true,
     ): BrainyPalCreateTaskFromMaterialRequest {
         return BrainyPalCreateTaskFromMaterialRequest(
             taskType = taskType?.trim()?.ifEmpty { null },
             title = title.trim().ifEmpty { null },
             helpLimit = helpLimit.coerceAtLeast(0),
             dueAt = dueAt,
+            activate = activate,
+        )
+    }
+
+    fun confirmRequest(
+        title: String? = null,
+        items: List<BrainyPalParentMaterialItem>? = null,
+        note: String? = null,
+    ): BrainyPalConfirmParentMaterialRequest {
+        return BrainyPalConfirmParentMaterialRequest(
+            title = title?.trim()?.ifEmpty { null },
+            items = items?.takeIf { it.isNotEmpty() },
+            parentNote = note?.trim()?.ifEmpty { null },
         )
     }
 }

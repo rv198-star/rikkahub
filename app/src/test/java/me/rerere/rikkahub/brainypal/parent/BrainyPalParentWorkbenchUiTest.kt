@@ -8,7 +8,13 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionCandidate
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatStructuredAction
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanCandidate
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanSnapshot
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanVerification
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWebMaterialSource
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskSummary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,7 +27,7 @@ class BrainyPalParentWorkbenchUiTest {
         val entries = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
 
         assertEquals(
-            listOf("练习题", "听写", "阅读导读", "背诵", "错题复练", "粘贴材料", "拍照扫描", "简单说一下"),
+            listOf("练习题", "听写", "阅读导读", "背诵", "错题复练", "粘贴材料", "拍照扫描", "联网找材料", "简单说一下"),
             entries.map { it.label },
         )
         assertTrue(entries[0].structuredPrimary)
@@ -33,8 +39,9 @@ class BrainyPalParentWorkbenchUiTest {
         assertTrue(entries.first { it.id == "dictation" }.enabled)
         assertTrue(entries.first { it.id == "wrong_questions" }.enabled)
         assertTrue(entries.first { it.id == "paste_text" }.enabled)
-        assertFalse(entries.first { it.id == "photo_scan" }.enabled)
-        assertEquals("待接入", entries.first { it.id == "photo_scan" }.statusLabel)
+        assertTrue(entries.first { it.id == "photo_scan" }.enabled)
+        assertEquals("可用", entries.first { it.id == "photo_scan" }.statusLabel)
+        assertTrue(entries.first { it.id == "web_search" }.enabled)
         assertTrue(entries.first { it.id == "chat_light" }.enabled)
     }
 
@@ -189,6 +196,131 @@ class BrainyPalParentWorkbenchUiTest {
     }
 
     @Test
+    fun `confirmed ocr evidence card folds attribution actions into summary`() {
+        val card = BrainyPalParentWorkbenchUi.ocrEvidenceCards(
+            dictationTask(
+                taskId = "ocr-task",
+                status = "reviewing",
+                confirmationStatus = "confirmed",
+                confidence = 0.65f,
+                recognizedText = "ornage",
+                errorAttribution = "ocr_recognized_wrong",
+            )
+        ).single()
+
+        assertFalse(card.requiresManualConfirmation)
+        assertEquals("已确认：OCR 识别错了", card.confirmationSummaryLabel)
+        assertEquals(emptyList<String>(), card.actionLabels)
+        assertEquals("重新查看证据", card.previewActionLabel)
+    }
+
+    @Test
+    fun `web material candidate card shows source and avoids direct dispatch`() {
+        val card = BrainyPalParentWorkbenchUi.webMaterialCandidateCards(
+            listOf(
+                material("material_web_1").copy(
+                    status = "candidate",
+                    inputMode = "web_search",
+                    materialType = "reading_passage",
+                    title = "春晓（孟浩然）",
+                    sourceCandidates = listOf(
+                        BrainyPalParentWebMaterialSource(
+                            sourceUrl = "https://zh.wikisource.org/wiki/春晓_(孟浩然)",
+                            title = "Wikisource：春晓",
+                            sourceType = "public_domain_wikisource",
+                            snippet = "春眠不觉晓；处处闻啼鸟",
+                            uncertaintyNote = "课本版本、标点和注释可能不同。",
+                        )
+                    ),
+                    confidence = 0.72f,
+                    uncertaintyNote = "这是联网来源候选，请家长确认后再入库。",
+                    confirmUrl = "/api/v1/parent/materials/material_web_1/confirm",
+                )
+            )
+        ).single()
+
+        assertEquals("春晓（孟浩然）", card.title)
+        assertEquals("Wikisource：春晓 · https://zh.wikisource.org/wiki/春晓_(孟浩然)", card.sourceLabel)
+        assertEquals("置信度 72%", card.confidenceLabel)
+        assertTrue(card.uncertaintyLabel.contains("家长确认"))
+        assertEquals(listOf("确认入库", "确认并生成待发任务", "拒绝"), card.actionLabels)
+        assertFalse(card.canDirectSend)
+    }
+
+    @Test
+    fun `chat trigger card requires confirmation before import or strategy effects`() {
+        val importCard = BrainyPalParentWorkbenchUi.chatTriggerCard(
+            BrainyPalParentChatTriggerResponse(
+                intent = "prepare_import",
+                requiresConfirmation = true,
+                structuredAction = BrainyPalParentChatStructuredAction(
+                    type = "import_session",
+                    label = "打开导入确认",
+                    requiresConfirmation = true,
+                ),
+                importSession = importSession(entryGoal = "dictation"),
+                message = "我先整理成确认方案，家长确认后才会成为待发任务。",
+            )
+        )
+
+        assertEquals("导入确认候选", importCard.title)
+        assertEquals("打开导入确认", importCard.primaryActionLabel)
+        assertTrue(importCard.requiresConfirmation)
+        assertFalse(importCard.canDirectSend)
+
+        val strategyCard = BrainyPalParentWorkbenchUi.chatTriggerCard(
+            BrainyPalParentChatTriggerResponse(
+                intent = "strategy_proposal",
+                requiresConfirmation = true,
+                structuredAction = BrainyPalParentChatStructuredAction(
+                    type = "strategy_candidate",
+                    label = "确认引导策略",
+                    requiresConfirmation = true,
+                ),
+                message = "我会先生成策略候选，家长确认后才会生效。",
+            )
+        )
+
+        assertEquals("策略候选", strategyCard.title)
+        assertEquals("确认引导策略", strategyCard.primaryActionLabel)
+        assertTrue(strategyCard.requiresConfirmation)
+        assertFalse(strategyCard.canDirectSend)
+    }
+
+    @Test
+    fun `photo scan candidate cards expose editable parent confirmation choices`() {
+        val card = BrainyPalParentWorkbenchUi.photoScanCandidateCards(
+            BrainyPalParentPhotoScanSnapshot(
+                scanId = "scan_1",
+                capturedAt = "2026-06-06T09:30:00Z",
+                candidates = listOf(
+                    BrainyPalParentPhotoScanCandidate(
+                        candidateId = "q1",
+                        questionNumber = "第1题",
+                        questionText = "a - (b - c + d)",
+                        childAnswer = "a-b+c-d",
+                        status = "diagnosable",
+                        recommendation = "recommended",
+                        confidence = 0.95f,
+                        verification = BrainyPalParentPhotoScanVerification(
+                            referenceAnswer = "a-b+c-d",
+                            judgement = "correct",
+                            explanation = "孩子去括号结果与参考答案一致。",
+                            confidence = 0.92f,
+                            requiresParentReview = false,
+                        ),
+                    )
+                ),
+            )
+        ).single()
+
+        assertEquals("第1题", card.numberLabel)
+        assertEquals("置信度 95%", card.confidenceLabel)
+        assertEquals("AI 初判正确", card.verificationLabel)
+        assertEquals(listOf("写入错题", "编辑后写入", "跳过"), card.actionLabels)
+    }
+
+    @Test
     fun `parent task summary uses child task units by type`() {
         assertEquals("1 段", BrainyPalParentTaskSummary.from(recitationTask()).itemCountLabel)
         assertEquals("2 条", BrainyPalParentTaskSummary.from(dictationTask(itemCount = 2)).itemCountLabel)
@@ -275,6 +407,7 @@ class BrainyPalParentWorkbenchUiTest {
         confirmationStatus: String = "confirmed",
         confidence: Float = 0.96f,
         recognizedText: String = "planet",
+        errorAttribution: String? = if (confirmationStatus == "confirmed") "correct" else null,
         itemCount: Int = 1,
     ): BrainyPalChildPracticeTaskDetail {
         return BrainyPalChildPracticeTaskDetail(
@@ -304,11 +437,7 @@ class BrainyPalParentWorkbenchUiTest {
                             height = 0.1f,
                         ),
                         confirmationStatus = confirmationStatus,
-                        errorAttribution = if (confirmationStatus == "confirmed") {
-                            "correct"
-                        } else {
-                            null
-                        },
+                        errorAttribution = errorAttribution,
                     ),
                 )
             },

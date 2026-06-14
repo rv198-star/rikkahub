@@ -7,6 +7,8 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrReview
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanSnapshot
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWorkloadGuardConflict
 
@@ -74,6 +76,7 @@ data class BrainyPalParentOcrEvidenceCard(
     val previewBoundingBox: BrainyPalDictationOcrBoundingBox?,
     val previewActionLabel: String,
     val guidanceLabel: String?,
+    val confirmationSummaryLabel: String?,
     val requiresManualConfirmation: Boolean,
     val actions: List<BrainyPalDictationOcrConfirmationAction>,
     val actionLabels: List<String>,
@@ -81,6 +84,35 @@ data class BrainyPalParentOcrEvidenceCard(
     val hasSourceRegionOverlay: Boolean
         get() = previewBoundingBox != null
 }
+
+data class BrainyPalParentWebMaterialCandidateCard(
+    val materialId: String,
+    val title: String,
+    val typeLabel: String,
+    val sourceLabel: String,
+    val confidenceLabel: String,
+    val uncertaintyLabel: String,
+    val actionLabels: List<String>,
+    val canDirectSend: Boolean,
+)
+
+data class BrainyPalParentChatTriggerCard(
+    val title: String,
+    val body: String,
+    val primaryActionLabel: String,
+    val requiresConfirmation: Boolean,
+    val canDirectSend: Boolean,
+)
+
+data class BrainyPalParentPhotoScanCandidateCard(
+    val candidateId: String,
+    val numberLabel: String,
+    val questionText: String,
+    val childAnswerLabel: String,
+    val confidenceLabel: String,
+    val verificationLabel: String,
+    val actionLabels: List<String>,
+)
 
 object BrainyPalParentWorkbenchUi {
     private val activeTaskStatuses = setOf(
@@ -146,8 +178,15 @@ object BrainyPalParentWorkbenchUi {
                 id = "photo_scan",
                 label = "拍照扫描",
                 supportingText = "拍作业页，先生成可确认材料",
-                statusLabel = "待接入",
-                enabled = false,
+                statusLabel = if (configured) "可用" else "需连接",
+                enabled = configured,
+            ),
+            BrainyPalParentSupplyEntry(
+                id = "web_search",
+                label = "联网找材料",
+                supportingText = "按年级、课文或单元找候选",
+                statusLabel = if (configured) "可用" else "需连接",
+                enabled = configured,
             ),
             BrainyPalParentSupplyEntry(
                 id = "chat_light",
@@ -324,11 +363,108 @@ object BrainyPalParentWorkbenchUi {
                 sourceRegionLabel = row.sourceRegionLabel,
                 previewImageRef = row.previewImageRef,
                 previewBoundingBox = row.previewBoundingBox,
-                previewActionLabel = row.previewButtonLabel,
+                previewActionLabel = if (row.requiresManualConfirmation) {
+                    row.previewButtonLabel
+                } else {
+                    "重新查看证据"
+                },
                 guidanceLabel = row.guidanceLabel,
+                confirmationSummaryLabel = if (row.requiresManualConfirmation) {
+                    null
+                } else {
+                    "已确认：${row.resultLabel}"
+                },
                 requiresManualConfirmation = row.requiresManualConfirmation,
-                actions = row.confirmationActions,
-                actionLabels = row.confirmationActions.map { it.label },
+                actions = if (row.requiresManualConfirmation) row.confirmationActions else emptyList(),
+                actionLabels = if (row.requiresManualConfirmation) {
+                    row.confirmationActions.map { it.label }
+                } else {
+                    emptyList()
+                },
+            )
+        }
+    }
+
+    fun webMaterialCandidateCards(
+        materials: List<BrainyPalParentMaterial>,
+    ): List<BrainyPalParentWebMaterialCandidateCard> {
+        return materials
+            .filter { it.inputMode == "web_search" || it.sourceCandidates.isNotEmpty() }
+            .map { material ->
+                val source = material.sourceCandidates.firstOrNull()
+                BrainyPalParentWebMaterialCandidateCard(
+                    materialId = material.materialId,
+                    title = material.title,
+                    typeLabel = material.typeLabel,
+                    sourceLabel = when {
+                        source != null -> "${source.title} · ${source.sourceUrl}"
+                        material.sourceRefs.isNotEmpty() -> material.sourceRefs.first()
+                        else -> "来源待确认"
+                    },
+                    confidenceLabel = material.confidence?.let {
+                        "置信度 ${(it * 100).toInt()}%"
+                    } ?: "置信度待确认",
+                    uncertaintyLabel = material.uncertaintyNote
+                        ?: source?.uncertaintyNote
+                        ?: "来源和版本需要家长确认。",
+                    actionLabels = listOf("确认入库", "确认并生成待发任务", "拒绝"),
+                    canDirectSend = false,
+                )
+            }
+    }
+
+    fun chatTriggerCard(response: BrainyPalParentChatTriggerResponse): BrainyPalParentChatTriggerCard {
+        val actionLabel = response.structuredAction?.label ?: "继续"
+        return when (response.intent) {
+            "prepare_import" -> BrainyPalParentChatTriggerCard(
+                title = "导入确认候选",
+                body = response.importSession?.title ?: response.message,
+                primaryActionLabel = actionLabel,
+                requiresConfirmation = true,
+                canDirectSend = false,
+            )
+            "child_status_query" -> BrainyPalParentChatTriggerCard(
+                title = "学习摘要",
+                body = response.statusSummary?.headline ?: response.message,
+                primaryActionLabel = actionLabel,
+                requiresConfirmation = false,
+                canDirectSend = false,
+            )
+            "strategy_proposal" -> BrainyPalParentChatTriggerCard(
+                title = "策略候选",
+                body = response.strategyCandidate?.parentGoalText ?: response.message,
+                primaryActionLabel = actionLabel,
+                requiresConfirmation = true,
+                canDirectSend = false,
+            )
+            else -> BrainyPalParentChatTriggerCard(
+                title = "家长对话",
+                body = response.message,
+                primaryActionLabel = "知道了",
+                requiresConfirmation = false,
+                canDirectSend = false,
+            )
+        }
+    }
+
+    fun photoScanCandidateCards(
+        snapshot: BrainyPalParentPhotoScanSnapshot,
+    ): List<BrainyPalParentPhotoScanCandidateCard> {
+        return snapshot.candidates.mapIndexed { index, candidate ->
+            BrainyPalParentPhotoScanCandidateCard(
+                candidateId = candidate.candidateId,
+                numberLabel = candidate.questionNumber ?: "第 ${index + 1} 题",
+                questionText = candidate.questionText,
+                childAnswerLabel = candidate.childAnswer?.let { "孩子答案：$it" } ?: "未识别到孩子答案",
+                confidenceLabel = "置信度 ${(candidate.confidence * 100).toInt()}%",
+                verificationLabel = when {
+                    candidate.verification?.requiresParentReview == true -> "需要家长确认"
+                    candidate.verification?.judgement == "correct" -> "AI 初判正确"
+                    candidate.verification?.judgement == "incorrect" -> "AI 初判可能有错"
+                    candidate.verification != null -> "AI 已给参考判断"
+                    else -> "等待家长确认"
+                },
+                actionLabels = listOf("写入错题", "编辑后写入", "跳过"),
             )
         }
     }

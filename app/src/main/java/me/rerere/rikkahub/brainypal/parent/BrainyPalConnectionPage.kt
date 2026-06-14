@@ -1,5 +1,9 @@
 package me.rerere.rikkahub.brainypal.parent
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -67,15 +72,20 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 import me.rerere.rikkahub.brainypal.child.BrainyPalChildUiText
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskDetail
 import me.rerere.rikkahub.brainypal.shared.BrainyPalConfirmDictationOcrEvidenceRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalConfirmPhotoScanRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDueWrongQuestionReviewItem
 import me.rerere.rikkahub.brainypal.shared.BrainyPalManagementPin
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentApi
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentApiFactory
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterialComposer
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanSnapshot
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWebMaterialSearchRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWorkloadGuardConflict
 import me.rerere.rikkahub.brainypal.shared.BrainyPalSendPendingTaskRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalUpdatePendingTaskRequest
@@ -92,9 +102,13 @@ import me.rerere.rikkahub.brainypal.child.theme.BrainyPalChildTheme
 import me.rerere.rikkahub.utils.plus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import retrofit2.HttpException
+import java.io.File
 import kotlin.uuid.Uuid
 
 @Composable
@@ -103,6 +117,7 @@ fun BrainyPalConnectionPage(
     parentApiFactory: BrainyPalParentApiFactory = koinInject(),
 ) {
     val navController = LocalNavController.current
+    val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -147,6 +162,11 @@ fun BrainyPalConnectionPage(
     var editingPendingTask by remember { mutableStateOf<BrainyPalParentPracticeTaskView?>(null) }
     var pendingEditTitle by remember { mutableStateOf("") }
     var pendingEditInstructions by remember { mutableStateOf("") }
+    var webSearchQuery by remember { mutableStateOf("") }
+    var webSearchResults by remember { mutableStateOf<List<BrainyPalParentMaterial>>(emptyList()) }
+    var parentChatText by remember { mutableStateOf("") }
+    var parentChatTrigger by remember { mutableStateOf<BrainyPalParentChatTriggerResponse?>(null) }
+    var photoScanSnapshot by remember { mutableStateOf<BrainyPalParentPhotoScanSnapshot?>(null) }
 
     fun updateWorkbench(
         drafts: List<BrainyPalParentMaterial> = draftMaterials,
@@ -298,6 +318,36 @@ fun BrainyPalConnectionPage(
             } finally {
                 parentBusy = false
             }
+        }
+    }
+
+    fun runParentPhotoScan(uri: Uri) {
+        scope.launch {
+            val api = parentApiFromSettings() ?: return@launch
+            parentBusy = true
+            parentMessage = "正在上传原图并识别题目..."
+            try {
+                val imageFile = copyUriToParentPhotoScanCache(context, uri)
+                photoScanSnapshot = api.createPhotoScan(parentPhotoScanPart(imageFile))
+                parentMessage = "已生成照片候选，请确认后写入错题。"
+            } catch (error: Throwable) {
+                if (error is CancellationException) {
+                    throw error
+                }
+                parentMessage = error.message ?: "照片扫描失败"
+            } finally {
+                parentBusy = false
+            }
+        }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri != null) {
+            runParentPhotoScan(uri)
+        } else {
+            parentMessage = "没有选择照片"
         }
     }
 
@@ -584,23 +634,176 @@ fun BrainyPalConnectionPage(
                         when (activeSupplyEntryId) {
                             "photo_scan" -> {
                                 item {
-                                    ParentComingSoonSourceCard(
-                                        title = "拍照扫描导入",
-                                        body = "后续会把作业页照片转成可确认材料，并保留原图区域证据。当前先走粘贴材料和错题复习。",
+                                    ParentPhotoScanCard(
+                                        configured = configured,
+                                        busy = parentBusy,
+                                        snapshot = photoScanSnapshot,
+                                        message = parentMessage,
+                                        onPickImage = { photoPickerLauncher.launch("image/*") },
+                                        onConfirmAll = { snapshot ->
+                                            val candidateIds = snapshot.candidates.map { it.candidateId }
+                                            if (candidateIds.isEmpty()) {
+                                                parentMessage = "这张照片暂时没有可写入的候选题。"
+                                                return@ParentPhotoScanCard
+                                            }
+                                            runParentAction("已写入错题候选，后续可生成复练任务") { api ->
+                                                api.confirmPhotoScan(
+                                                    scanId = snapshot.scanId,
+                                                    request = BrainyPalConfirmPhotoScanRequest(
+                                                        candidateIds = candidateIds,
+                                                        parentNote = "家长确认照片扫描候选写入错题。",
+                                                    ),
+                                                )
+                                                null
+                                            }
+                                        },
                                     )
                                 }
                             }
 
-                            "ai_material_search" -> {
+                            "web_search" -> {
                                 item {
-                                    ParentComingSoonSourceCard(
-                                        title = "问 AI 找材料",
-                                        body = "这个入口会支持按年级、课文、单元联网找候选材料，家长确认后再生成任务。",
+                                    ParentWebMaterialSearchCard(
+                                        configured = configured,
+                                        busy = parentBusy,
+                                        query = webSearchQuery,
+                                        subject = materialSubject,
+                                        results = webSearchResults,
+                                        onQueryChange = { webSearchQuery = it },
+                                        onSubjectChange = { materialSubject = it },
+                                        onSearch = {
+                                            if (webSearchQuery.isBlank()) {
+                                                parentMessage = "请先输入要找的课文、单元或材料。"
+                                                return@ParentWebMaterialSearchCard
+                                            }
+                                            runParentAction("已找到联网候选，请确认来源和版本") { api ->
+                                                val response = api.searchWebMaterials(
+                                                    BrainyPalParentWebMaterialSearchRequest(
+                                                        query = webSearchQuery,
+                                                        subject = materialSubject.ifBlank { null },
+                                                    )
+                                                )
+                                                webSearchResults = response.items
+                                                draftMaterials = (response.items + draftMaterials)
+                                                    .distinctBy { it.materialId }
+                                                updateWorkbench(drafts = draftMaterials)
+                                                null
+                                            }
+                                        },
+                                        onConfirm = { material ->
+                                            runParentAction("已确认入库：${material.title}") { api ->
+                                                val confirmed = api.confirmMaterial(
+                                                    material.materialId,
+                                                    BrainyPalParentMaterialComposer.confirmRequest(
+                                                        title = material.title,
+                                                        items = material.items,
+                                                        note = "确认联网来源候选。",
+                                                    ),
+                                                )
+                                                webSearchResults = webSearchResults.map {
+                                                    if (it.materialId == confirmed.materialId) confirmed else it
+                                                }
+                                                draftMaterials = draftMaterials.filterNot {
+                                                    it.materialId == confirmed.materialId
+                                                }
+                                                confirmedMaterials = listOf(confirmed) + confirmedMaterials
+                                                    .filterNot { it.materialId == confirmed.materialId }
+                                                updateWorkbench(drafts = draftMaterials, confirmed = confirmedMaterials)
+                                                null
+                                            }
+                                        },
+                                        onConfirmToDraftTask = { material ->
+                                            runParentAction("已确认并生成待发任务：${material.title}") { api ->
+                                                val confirmed = api.confirmMaterial(
+                                                    material.materialId,
+                                                    BrainyPalParentMaterialComposer.confirmRequest(
+                                                        title = material.title,
+                                                        items = material.items,
+                                                        note = "确认联网来源候选并生成待处理任务。",
+                                                    ),
+                                                )
+                                                val task = api.createTaskFromMaterial(
+                                                    confirmed.materialId,
+                                                    BrainyPalParentMaterialComposer.taskRequest(
+                                                        title = confirmed.title,
+                                                        activate = false,
+                                                    ),
+                                                )
+                                                webSearchResults = webSearchResults.map {
+                                                    if (it.materialId == confirmed.materialId) confirmed else it
+                                                }
+                                                draftMaterials = draftMaterials.filterNot {
+                                                    it.materialId == confirmed.materialId
+                                                }
+                                                confirmedMaterials = listOf(confirmed) + confirmedMaterials
+                                                    .filterNot { it.materialId == confirmed.materialId }
+                                                val tasks = listOf(task) + parentTasks.filterNot { it.taskId == task.taskId }
+                                                updateWorkbench(
+                                                    drafts = draftMaterials,
+                                                    confirmed = confirmedMaterials,
+                                                    tasks = tasks,
+                                                )
+                                                tasks
+                                            }
+                                        },
+                                        onReject = { material ->
+                                            webSearchResults = webSearchResults.filterNot {
+                                                it.materialId == material.materialId
+                                            }
+                                            draftMaterials = draftMaterials.filterNot {
+                                                it.materialId == material.materialId
+                                            }
+                                            updateWorkbench(drafts = draftMaterials)
+                                            parentMessage = "已移除候选：${material.title}"
+                                        },
+                                    )
+                                }
+                            }
+
+                            "chat_light" -> {
+                                item {
+                                    ParentChatLightCard(
+                                        configured = configured,
+                                        busy = parentBusy,
+                                        text = parentChatText,
+                                        trigger = parentChatTrigger,
+                                        message = parentMessage,
+                                        onTextChange = { parentChatText = it },
+                                        onSubmit = {
+                                            if (parentChatText.isBlank()) {
+                                                parentMessage = "先说一下要导入、查询或调整什么。"
+                                                return@ParentChatLightCard
+                                            }
+                                            runParentAction("已生成聊天候选，请确认后继续") { api ->
+                                                parentChatTrigger = api.createChatTrigger(
+                                                    BrainyPalParentChatTriggerRequest(
+                                                        message = parentChatText,
+                                                        subject = materialSubject.ifBlank { null },
+                                                    )
+                                                )
+                                                parentChatTrigger?.importSession?.let {
+                                                    currentImportSession = it
+                                                }
+                                                null
+                                            }
+                                        },
+                                        onPrimaryAction = { trigger ->
+                                            when (trigger.intent) {
+                                                "prepare_import" -> {
+                                                    trigger.importSession?.let {
+                                                        currentImportSession = it
+                                                        activeSupplyEntryId = "practice_questions"
+                                                    }
+                                                }
+                                                "child_status_query" -> activeParentSection = "status"
+                                                "strategy_proposal" -> activeParentSection = "strategy"
+                                            }
+                                        },
                                     )
                                 }
                             }
                         }
-                        item {
+                        if (activeSupplyEntryId !in setOf("photo_scan", "web_search", "chat_light")) item {
                             ParentMaterialImportCard(
                                 configured = configured,
                                 busy = parentBusy,
@@ -1294,6 +1497,299 @@ private fun ParentComingSoonSourceCard(
 }
 
 @Composable
+private fun ParentWebMaterialSearchCard(
+    configured: Boolean,
+    busy: Boolean,
+    query: String,
+    subject: String,
+    results: List<BrainyPalParentMaterial>,
+    onQueryChange: (String) -> Unit,
+    onSubjectChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    onConfirm: (BrainyPalParentMaterial) -> Unit,
+    onConfirmToDraftTask: (BrainyPalParentMaterial) -> Unit,
+    onReject: (BrainyPalParentMaterial) -> Unit,
+) {
+    val cards = BrainyPalParentWorkbenchUi.webMaterialCandidateCards(results)
+    Card {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(HugeIcons.ServerStack01, null, tint = BrainyPalChildTheme.cyanAccent)
+                Text("联网找材料", style = MaterialTheme.typography.titleMedium)
+            }
+            Text(
+                text = "输入年级、课文、单元或关键词；结果只作为候选，确认来源和版本后才入库。",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    label = { Text("检索内容") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1.5f),
+                )
+                OutlinedTextField(
+                    value = subject,
+                    onValueChange = onSubjectChange,
+                    label = { Text("科目") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                enabled = configured && !busy,
+                onClick = onSearch,
+            ) {
+                Text("查找候选材料")
+            }
+            if (cards.isEmpty()) {
+                Text(
+                    text = "搜不到或版本不确定时会停在这里，家长可以换关键词或改用粘贴材料。",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                cards.forEachIndexed { index, card ->
+                    if (index > 0) HorizontalDivider()
+                    val material = results.first { it.materialId == card.materialId }
+                    ParentWebMaterialCandidateRow(
+                        card = card,
+                        material = material,
+                        busy = busy,
+                        onConfirm = onConfirm,
+                        onConfirmToDraftTask = onConfirmToDraftTask,
+                        onReject = onReject,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ParentWebMaterialCandidateRow(
+    card: BrainyPalParentWebMaterialCandidateCard,
+    material: BrainyPalParentMaterial,
+    busy: Boolean,
+    onConfirm: (BrainyPalParentMaterial) -> Unit,
+    onConfirmToDraftTask: (BrainyPalParentMaterial) -> Unit,
+    onReject: (BrainyPalParentMaterial) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "${card.typeLabel} · ${card.confidenceLabel}",
+            style = MaterialTheme.typography.labelLarge,
+            color = BrainyPalChildTheme.amberText,
+        )
+        Text(card.title, style = MaterialTheme.typography.titleSmall)
+        Text(card.sourceLabel, style = MaterialTheme.typography.bodySmall)
+        Text(card.uncertaintyLabel, style = MaterialTheme.typography.bodySmall)
+        material.previewText.takeIf { it.isNotBlank() }?.let {
+            Text(it.take(140), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                enabled = !busy,
+                onClick = { onConfirm(material) },
+            ) {
+                Text("确认入库")
+            }
+            Button(
+                modifier = Modifier.weight(1f),
+                enabled = !busy,
+                onClick = { onConfirmToDraftTask(material) },
+            ) {
+                Text("生成待发任务")
+            }
+        }
+        TextButton(
+            enabled = !busy,
+            onClick = { onReject(material) },
+        ) {
+            Text("拒绝这个候选")
+        }
+    }
+}
+
+@Composable
+private fun ParentChatLightCard(
+    configured: Boolean,
+    busy: Boolean,
+    text: String,
+    trigger: BrainyPalParentChatTriggerResponse?,
+    message: String?,
+    onTextChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onPrimaryAction: (BrainyPalParentChatTriggerResponse) -> Unit,
+) {
+    Card {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(HugeIcons.Book03, null, tint = BrainyPalChildTheme.amberText)
+                Text("简单说一下", style = MaterialTheme.typography.titleMedium)
+            }
+            Text(
+                text = "适合还没想清入口时快速表达；只有导入、孩子状态、策略建议会转成可确认卡片。",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedTextField(
+                value = text,
+                onValueChange = onTextChange,
+                label = { Text("家长消息") },
+                placeholder = { Text("例如：帮我布置第 12 课听写：观察、勇敢") },
+                minLines = 3,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                enabled = configured && !busy,
+                onClick = onSubmit,
+            ) {
+                Text("生成候选卡")
+            }
+            ParentBusyMessage(busy = busy, message = message)
+            trigger?.let {
+                val card = BrainyPalParentWorkbenchUi.chatTriggerCard(it)
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(card.title, style = MaterialTheme.typography.titleSmall)
+                        Text(card.body, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = if (card.requiresConfirmation) {
+                                "需要家长确认后才会影响任务或策略"
+                            } else {
+                                "只展示摘要，不改动任务"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = BrainyPalChildTheme.amberText,
+                        )
+                        Button(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !busy,
+                            onClick = { onPrimaryAction(it) },
+                        ) {
+                            Text(card.primaryActionLabel)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ParentPhotoScanCard(
+    configured: Boolean,
+    busy: Boolean,
+    snapshot: BrainyPalParentPhotoScanSnapshot?,
+    message: String?,
+    onPickImage: () -> Unit,
+    onConfirmAll: (BrainyPalParentPhotoScanSnapshot) -> Unit,
+) {
+    val cards = snapshot?.let(BrainyPalParentWorkbenchUi::photoScanCandidateCards).orEmpty()
+    Card {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(HugeIcons.Camera01, null, tint = BrainyPalChildTheme.amberText)
+                Text("拍照扫描导入", style = MaterialTheme.typography.titleMedium)
+            }
+            Text(
+                text = "几何题、手写步骤和试卷页先上传原图识别；家长确认候选后写入错题，再决定是否生成复练。",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                enabled = configured && !busy,
+                onClick = onPickImage,
+            ) {
+                Icon(HugeIcons.Image02, null)
+                Text(
+                    text = "选择作业页照片",
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            ParentBusyMessage(busy = busy, message = message)
+            if (cards.isEmpty()) {
+                Text(
+                    text = "识别后会显示题号、题干、孩子答案、AI 初判和置信度。",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            } else {
+                cards.forEachIndexed { index, card ->
+                    if (index > 0) HorizontalDivider()
+                    ParentPhotoScanCandidateRow(card)
+                }
+                Button(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+                    enabled = !busy && snapshot != null,
+                    onClick = {
+                        if (snapshot != null) {
+                            onConfirmAll(snapshot)
+                        }
+                    },
+                ) {
+                    Text("确认写入错题候选")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ParentPhotoScanCandidateRow(card: BrainyPalParentPhotoScanCandidateCard) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "${card.numberLabel} · ${card.confidenceLabel} · ${card.verificationLabel}",
+            style = MaterialTheme.typography.labelLarge,
+            color = BrainyPalChildTheme.amberText,
+        )
+        Text(card.questionText, style = MaterialTheme.typography.bodyMedium)
+        Text(card.childAnswerLabel, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
 private fun ParentPendingReviewCard(
     busy: Boolean,
     draftMaterials: List<BrainyPalParentMaterial>,
@@ -1928,6 +2424,13 @@ private fun ParentOcrEvidenceReviewCard(
             )
             Text(card.evidenceLine, style = MaterialTheme.typography.bodyMedium)
             Text(card.sourceRegionLabel, style = MaterialTheme.typography.bodySmall)
+            card.confirmationSummaryLabel?.let {
+                Text(
+                    text = it,
+                    color = BrainyPalChildTheme.cyanAccent,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             card.guidanceLabel?.let { guidance ->
                 Text(
                     text = guidance,
@@ -2059,6 +2562,26 @@ private fun currentDraftConnection(
     baseUrl = baseUrl,
     apiKey = apiKey,
 )
+
+private fun copyUriToParentPhotoScanCache(context: Context, uri: Uri): File {
+    val target = context.cacheDir.resolve("brainypal_parent_scan_${System.currentTimeMillis()}.jpg")
+    context.contentResolver.openInputStream(uri).use { input ->
+        requireNotNull(input) { "Cannot open image uri: $uri" }
+        target.outputStream().use { output ->
+            input.copyTo(output)
+        }
+    }
+    return target
+}
+
+private fun parentPhotoScanPart(file: File): MultipartBody.Part {
+    val body = file.asRequestBody("image/jpeg".toMediaType())
+    return MultipartBody.Part.createFormData(
+        name = "file",
+        filename = file.name,
+        body = body,
+    )
+}
 
 private fun Settings.withBrainyPalConnection(
     config: BrainyPalChildConnectionConfig,

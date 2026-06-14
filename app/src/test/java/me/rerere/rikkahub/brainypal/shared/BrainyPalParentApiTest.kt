@@ -247,6 +247,200 @@ class BrainyPalParentApiTest {
     }
 
     @Test
+    fun `web material search decodes source uncertainty and confirmation contract`() {
+        val requestJson = JsonInstant.encodeToString(
+            BrainyPalParentWebMaterialSearchRequest(
+                query = "web-search-public-domain-poem",
+                subject = "语文",
+                gradeBand = "小学",
+                maxCandidates = 2,
+            )
+        )
+        assertTrue(requestJson.contains("\"query\":\"web-search-public-domain-poem\""))
+        assertTrue(requestJson.contains("\"grade_band\":\"小学\""))
+        assertTrue(requestJson.contains("\"max_candidates\":2"))
+
+        val body = """
+            {
+              "query": "web-search-public-domain-poem",
+              "items": [
+                {
+                  "material_id": "material_web_1",
+                  "status": "candidate",
+                  "input_mode": "web_search",
+                  "material_type": "reading_passage",
+                  "subject": "语文",
+                  "language": "zh-CN",
+                  "title": "春晓（孟浩然）",
+                  "raw_text": "春眠不觉晓\n处处闻啼鸟",
+                  "items": [
+                    {
+                      "item_id": "item_1",
+                      "text": "春眠不觉晓",
+                      "expected_answer": "春眠不觉晓",
+                      "source_ref": "https://zh.wikisource.org/wiki/春晓_(孟浩然)#line-1"
+                    }
+                  ],
+                  "candidate_task_types": ["reading", "recitation"],
+                  "source_refs": ["https://zh.wikisource.org/wiki/春晓_(孟浩然)"],
+                  "source_candidates": [
+                    {
+                      "source_url": "https://zh.wikisource.org/wiki/春晓_(孟浩然)",
+                      "title": "Wikisource：春晓",
+                      "source_type": "public_domain_wikisource",
+                      "snippet": "春眠不觉晓；处处闻啼鸟",
+                      "uncertainty_note": "课本版本、标点和注释可能不同。"
+                    }
+                  ],
+                  "search_query": "web-search-public-domain-poem",
+                  "confidence": 0.72,
+                  "uncertainty_note": "这是联网来源候选，请家长确认后再入库。",
+                  "confirm_url": "/api/v1/parent/materials/material_web_1/confirm",
+                  "requires_parent_confirmation": true
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val response = JsonInstant.decodeFromString<BrainyPalParentWebMaterialSearchResponse>(body)
+        val material = response.items.single()
+
+        assertEquals("web-search-public-domain-poem", response.query)
+        assertEquals("candidate", material.status)
+        assertEquals("web_search", material.inputMode)
+        assertEquals("春晓（孟浩然）", material.title)
+        assertEquals("reading", material.candidateTaskTypes.first())
+        assertEquals(0.72f, material.confidence)
+        assertTrue(material.uncertaintyNote.orEmpty().contains("家长确认"))
+        assertEquals("/api/v1/parent/materials/material_web_1/confirm", material.confirmUrl)
+        assertEquals("Wikisource：春晓", material.sourceCandidates.single().title)
+        assertTrue(material.sourceCandidates.single().sourceUrl.startsWith("https://"))
+    }
+
+    @Test
+    fun `parent chat trigger decodes confirmable import status and strategy cards`() {
+        val requestJson = JsonInstant.encodeToString(
+            BrainyPalParentChatTriggerRequest(
+                message = "帮我布置第 12 课听写：观察、勇敢",
+                subject = "语文",
+            )
+        )
+        assertTrue(requestJson.contains("\"message\":\"帮我布置第 12 课听写：观察、勇敢\""))
+
+        val importBody = """
+            {
+              "intent": "prepare_import",
+              "requires_confirmation": true,
+              "structured_action": {
+                "type": "import_session",
+                "label": "打开导入确认",
+                "requires_confirmation": true
+              },
+              "import_session": {
+                "session_id": "import_chat_1",
+                "status": "needs_confirmation",
+                "entry_goal": "dictation",
+                "input_mode": "chat",
+                "default_use": "dictation_material",
+                "title": "聊天导入听写",
+                "subject": "语文",
+                "raw_text": "观察、勇敢",
+                "preview": {
+                  "task_type": "dictation",
+                  "child_mode": "app",
+                  "requires_ocr_return": true,
+                  "estimated_minutes": 6,
+                  "send_label": "保存为待发任务"
+                }
+              },
+              "message": "我先整理成确认方案，家长确认后才会成为待发任务。"
+            }
+        """.trimIndent()
+        val importTrigger = JsonInstant.decodeFromString<BrainyPalParentChatTriggerResponse>(importBody)
+
+        assertEquals("prepare_import", importTrigger.intent)
+        assertTrue(importTrigger.requiresConfirmation)
+        assertEquals("import_session", importTrigger.structuredAction?.type)
+        assertEquals("import_chat_1", importTrigger.importSession?.sessionId)
+        assertEquals("dictation", importTrigger.importSession?.preview?.taskType)
+
+        val strategyBody = """
+            {
+              "intent": "strategy_proposal",
+              "requires_confirmation": true,
+              "structured_action": {
+                "type": "strategy_candidate",
+                "label": "确认引导策略",
+                "requires_confirmation": true
+              },
+              "strategy_candidate": {
+                "status": "needs_confirmation",
+                "parent_goal_text": "以后提示慢一点，多鼓励，但不要直接告诉答案。",
+                "allowed_effects": ["hint_pacing", "encouragement_tone"],
+                "child_answer_policy": "no_final_answers_before_submission",
+                "confirmation_label": "确认应用策略"
+              },
+              "message": "我会先生成策略候选，家长确认后才会生效。"
+            }
+        """.trimIndent()
+        val strategyTrigger = JsonInstant.decodeFromString<BrainyPalParentChatTriggerResponse>(strategyBody)
+
+        assertEquals("strategy_proposal", strategyTrigger.intent)
+        assertEquals("needs_confirmation", strategyTrigger.strategyCandidate?.status)
+        assertTrue(strategyTrigger.strategyCandidate?.allowedEffects.orEmpty().contains("hint_pacing"))
+        assertFalse(JsonInstant.encodeToString(strategyTrigger).contains("activated_strategy_id"))
+    }
+
+    @Test
+    fun `parent photo scan decodes candidates and encodes selected confirmation`() {
+        val body = """
+            {
+              "scan_id": "scan_20260606_093000",
+              "captured_at": "2026-06-06T09:30:00Z",
+              "candidates": [
+                {
+                  "candidate_id": "q1",
+                  "question_number": "第1题",
+                  "question_text": "a - (b - c + d)",
+                  "child_answer": "a-b+c-d",
+                  "work_observed": "有去括号步骤",
+                  "status": "diagnosable",
+                  "recommendation": "recommended",
+                  "confidence": 0.95,
+                  "verification": {
+                    "reference_answer": "a-b+c-d",
+                    "judgement": "correct",
+                    "explanation": "孩子去括号结果与参考答案一致。",
+                    "confidence": 0.92,
+                    "requires_parent_review": false
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val snapshot = JsonInstant.decodeFromString<BrainyPalParentPhotoScanSnapshot>(body)
+        val candidate = snapshot.candidates.single()
+
+        assertEquals("scan_20260606_093000", snapshot.scanId)
+        assertEquals("q1", candidate.candidateId)
+        assertEquals("第1题", candidate.questionNumber)
+        assertEquals("recommended", candidate.recommendation)
+        assertEquals("correct", candidate.verification?.judgement)
+        assertEquals(0.92f, candidate.verification?.confidence)
+
+        val confirmationJson = JsonInstant.encodeToString(
+            BrainyPalConfirmPhotoScanRequest(
+                candidateIds = listOf("q1"),
+                parentNote = "确认写入错题候选。",
+            )
+        )
+
+        assertTrue(confirmationJson.contains("\"candidate_ids\":[\"q1\"]"))
+        assertTrue(confirmationJson.contains("\"parent_note\":\"确认写入错题候选。\""))
+    }
+
+    @Test
     fun `pending task send request keeps overload confirmation explicit`() {
         val json = JsonInstant.encodeToString(
             BrainyPalSendPendingTaskRequest(confirmOverload = true)
