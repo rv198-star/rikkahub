@@ -145,6 +145,19 @@ class BrainyPalParentApiTest {
                 }
               ],
               "confirmed_materials": [],
+              "pending_tasks": [
+                {
+                  "task_id": "task_pending_1",
+                  "title": "口算待发任务",
+                  "subject": "数学",
+                  "mode": "practice",
+                  "status": "draft",
+                  "parent_status_label": "待发任务",
+                  "source_refs": ["parent-import://import_1"],
+                  "total_items": 2,
+                  "child_visible": false
+                }
+              ],
               "recent_tasks": [
                 {
                   "task_id": "practice_task_1",
@@ -160,6 +173,7 @@ class BrainyPalParentApiTest {
               "counts": {
                 "draft_materials": 1,
                 "confirmed_materials": 0,
+                "pending_tasks": 1,
                 "recent_tasks": 1
               }
             }
@@ -172,7 +186,73 @@ class BrainyPalParentApiTest {
         assertEquals("导入作业材料", workbench.structuredEntryLabel)
         assertEquals("听写材料", response.draftMaterials.single().title)
         assertEquals("观察", response.draftMaterials.single().items.single().text)
+        assertEquals("口算待发任务", response.pendingTasks.single().title)
+        assertEquals("待发任务", response.pendingTasks.single().statusLabel)
+        assertFalse(response.pendingTasks.single().childVisible)
         assertEquals("今日听写", response.recentTasks.single().title)
+    }
+
+    @Test
+    fun `parent import session encodes and decodes goal first contract`() {
+        val request = BrainyPalParentImportSessionComposer.textRequest(
+            entryGoal = "practice",
+            title = "口算练习",
+            subject = "数学",
+            rawText = "1. 1+1=?\n2. 2+3=?",
+        )
+
+        val requestJson = JsonInstant.encodeToString(request)
+
+        assertTrue(requestJson.contains("\"entry_goal\":\"practice\""))
+        assertTrue(requestJson.contains("\"default_use\":\"prepare_task\""))
+        assertTrue(requestJson.contains("\"raw_text\":\"1. 1+1=?\\n2. 2+3=?\""))
+
+        val responseBody = """
+            {
+              "session_id": "import_1",
+              "status": "needs_confirmation",
+              "entry_goal": "practice",
+              "input_mode": "paste",
+              "default_use": "prepare_task",
+              "title": "口算练习",
+              "subject": "数学",
+              "raw_text": "1. 1+1=?\n2. 2+3=?",
+              "source_refs": ["parent-import://import_1"],
+              "risk_flags": ["missing_reference_answer"],
+              "candidates": [
+                {
+                  "candidate_id": "candidate_1",
+                  "kind": "question",
+                  "prompt": "1+1=?",
+                  "risk_flags": ["missing_reference_answer"],
+                  "source_refs": ["parent-import://import_1#candidate_1"]
+                }
+              ],
+              "preview": {
+                "task_type": "practice",
+                "child_mode": "app",
+                "requires_ocr_return": false,
+                "estimated_minutes": 6,
+                "send_label": "保存为待发任务"
+              }
+            }
+        """.trimIndent()
+
+        val session = JsonInstant.decodeFromString<BrainyPalParentImportSession>(responseBody)
+
+        assertEquals("import_1", session.sessionId)
+        assertEquals("保存为待发任务", session.preview.sendLabel)
+        assertEquals("missing_reference_answer", session.riskFlags.single())
+        assertEquals("1+1=?", session.candidates.single().prompt)
+    }
+
+    @Test
+    fun `pending task send request keeps overload confirmation explicit`() {
+        val json = JsonInstant.encodeToString(
+            BrainyPalSendPendingTaskRequest(confirmOverload = true)
+        )
+
+        assertTrue(json.contains("\"confirm_overload\":true"))
     }
 
     @Test

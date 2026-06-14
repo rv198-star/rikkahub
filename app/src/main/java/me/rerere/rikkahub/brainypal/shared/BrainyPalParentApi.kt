@@ -17,6 +17,23 @@ interface BrainyPalParentApi {
         @Body request: BrainyPalImportTextMaterialRequest,
     ): BrainyPalParentMaterial
 
+    @POST("/api/v1/parent/import-sessions")
+    suspend fun createImportSession(
+        @Body request: BrainyPalCreateParentImportSessionRequest,
+    ): BrainyPalParentImportSession
+
+    @POST("/api/v1/parent/import-sessions/{session_id}/pending-task")
+    suspend fun createPendingTaskFromImportSession(
+        @Path("session_id") sessionId: String,
+        @Body request: BrainyPalCreatePendingTaskFromImportSessionRequest = BrainyPalCreatePendingTaskFromImportSessionRequest(),
+    ): BrainyPalParentPracticeTaskView
+
+    @POST("/api/v1/parent/pending-tasks/{task_id}/send")
+    suspend fun sendPendingTask(
+        @Path("task_id") taskId: String,
+        @Body request: BrainyPalSendPendingTaskRequest = BrainyPalSendPendingTaskRequest(),
+    ): BrainyPalParentPracticeTaskView
+
     @POST("/api/v1/parent/materials/{material_id}/confirm")
     suspend fun confirmMaterial(
         @Path("material_id") materialId: String,
@@ -115,6 +132,8 @@ data class BrainyPalParentPracticeTaskView(
     val subject: String? = null,
     val mode: String = "practice",
     val status: String = "draft",
+    @SerialName("parent_status_label")
+    val parentStatusLabel: String? = null,
     @SerialName("source_refs")
     val sourceRefs: List<String> = emptyList(),
     @SerialName("total_items")
@@ -126,10 +145,10 @@ data class BrainyPalParentPracticeTaskView(
         get() = practiceTaskKindLabel(mode)
 
     val statusLabel: String
-        get() = when (status) {
-            "draft" -> "草稿"
+        get() = parentStatusLabel ?: when (status) {
+            "draft" -> "待发任务"
             "active" -> "已下发"
-            "completed" -> "已完成"
+            "completed" -> "待复盘"
             else -> "待处理"
         }
 }
@@ -154,9 +173,97 @@ data class BrainyPalParentTaskWorkbenchResponse(
     val draftMaterials: List<BrainyPalParentMaterial> = emptyList(),
     @SerialName("confirmed_materials")
     val confirmedMaterials: List<BrainyPalParentMaterial> = emptyList(),
+    @SerialName("pending_tasks")
+    val pendingTasks: List<BrainyPalParentPracticeTaskView> = emptyList(),
     @SerialName("recent_tasks")
     val recentTasks: List<BrainyPalChildPracticeTaskDetail> = emptyList(),
     val counts: Map<String, Int> = emptyMap(),
+)
+
+@Serializable
+data class BrainyPalCreateParentImportSessionRequest(
+    @SerialName("entry_goal")
+    val entryGoal: String,
+    @SerialName("input_mode")
+    val inputMode: String = "paste",
+    @SerialName("default_use")
+    val defaultUse: String = "prepare_task",
+    val title: String,
+    val subject: String? = null,
+    @SerialName("raw_text")
+    val rawText: String,
+    @SerialName("source_refs")
+    val sourceRefs: List<String> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalCreatePendingTaskFromImportSessionRequest(
+    @SerialName("help_limit")
+    val helpLimit: Int = 3,
+)
+
+@Serializable
+data class BrainyPalSendPendingTaskRequest(
+    @SerialName("confirm_overload")
+    val confirmOverload: Boolean = false,
+)
+
+@Serializable
+data class BrainyPalParentImportSession(
+    @SerialName("session_id")
+    val sessionId: String,
+    val status: String = "needs_confirmation",
+    @SerialName("entry_goal")
+    val entryGoal: String,
+    @SerialName("input_mode")
+    val inputMode: String = "paste",
+    @SerialName("default_use")
+    val defaultUse: String = "prepare_task",
+    val title: String,
+    val subject: String? = null,
+    @SerialName("raw_text")
+    val rawText: String = "",
+    @SerialName("source_refs")
+    val sourceRefs: List<String> = emptyList(),
+    @SerialName("risk_flags")
+    val riskFlags: List<String> = emptyList(),
+    val candidates: List<BrainyPalParentImportSessionCandidate> = emptyList(),
+    val preview: BrainyPalParentImportSessionPreview = BrainyPalParentImportSessionPreview(),
+    @SerialName("pending_task_id")
+    val pendingTaskId: String? = null,
+)
+
+@Serializable
+data class BrainyPalParentImportSessionCandidate(
+    @SerialName("candidate_id")
+    val candidateId: String,
+    val kind: String,
+    val prompt: String,
+    @SerialName("ai_reference_answer")
+    val aiReferenceAnswer: String? = null,
+    @SerialName("ai_explanation")
+    val aiExplanation: String? = null,
+    @SerialName("source_answer")
+    val sourceAnswer: String? = null,
+    val confidence: Float? = null,
+    @SerialName("risk_flags")
+    val riskFlags: List<String> = emptyList(),
+    @SerialName("source_refs")
+    val sourceRefs: List<String> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalParentImportSessionPreview(
+    @SerialName("task_type")
+    val taskType: String = "practice",
+    @SerialName("child_mode")
+    val childMode: String = "app",
+    @SerialName("requires_ocr_return")
+    val requiresOcrReturn: Boolean = false,
+    @SerialName("estimated_minutes")
+    val estimatedMinutes: Int = 10,
+    @SerialName("send_label")
+    val sendLabel: String = "保存为待发任务",
 )
 
 @Serializable
@@ -286,6 +393,7 @@ data class BrainyPalParentWorkbench(
         fun from(response: BrainyPalParentTaskWorkbenchResponse): BrainyPalParentWorkbench {
             val draftCount = response.draftMaterials.size
             val confirmedCount = response.confirmedMaterials.size
+            val pendingTaskCount = response.pendingTasks.size
             val taskCount = response.recentTasks.size
             return BrainyPalParentWorkbench(
                 materialSummary = when {
@@ -294,6 +402,7 @@ data class BrainyPalParentWorkbench(
                     else -> "还没有导入材料"
                 },
                 taskSummary = when {
+                    pendingTaskCount > 0 -> "$pendingTaskCount 个待发任务"
                     taskCount > 0 -> "$taskCount 个任务正在追踪"
                     else -> "还没有下发任务"
                 },
@@ -408,6 +517,34 @@ data class BrainyPalParentTaskSummary(
                 "wrong_question_practice" -> "题"
                 else -> "条"
             }
+        }
+    }
+}
+
+object BrainyPalParentImportSessionComposer {
+    fun textRequest(
+        entryGoal: String,
+        title: String,
+        subject: String,
+        rawText: String,
+        defaultUse: String = defaultUseForEntryGoal(entryGoal),
+    ): BrainyPalCreateParentImportSessionRequest {
+        return BrainyPalCreateParentImportSessionRequest(
+            entryGoal = entryGoal.trim().ifEmpty { "practice" },
+            inputMode = "paste",
+            defaultUse = defaultUse,
+            title = title.trim().ifEmpty { "导入作业材料" },
+            subject = subject.trim().ifEmpty { null },
+            rawText = rawText.trim(),
+        )
+    }
+
+    private fun defaultUseForEntryGoal(entryGoal: String): String {
+        return when (entryGoal) {
+            "dictation" -> "dictation_material"
+            "reading", "recitation" -> "reading_material"
+            "review" -> "extract_review"
+            else -> "prepare_task"
         }
     }
 }

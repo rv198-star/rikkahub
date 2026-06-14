@@ -5,6 +5,10 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskItem
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrBoundingBox
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrEvidence
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionCandidate
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskSummary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,16 +21,21 @@ class BrainyPalParentWorkbenchUiTest {
         val entries = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
 
         assertEquals(
-            listOf("粘贴材料", "错题复习", "拍照扫描", "问 AI 找材料"),
+            listOf("练习题", "听写", "阅读导读", "背诵", "错题复练", "粘贴材料", "拍照扫描", "简单说一下"),
             entries.map { it.label },
         )
         assertTrue(entries[0].structuredPrimary)
         assertTrue(entries[1].structuredPrimary)
-        assertTrue(entries.first { it.id == "paste_text" }.enabled)
+        assertTrue(entries[2].structuredPrimary)
+        assertTrue(entries[3].structuredPrimary)
+        assertTrue(entries[4].structuredPrimary)
+        assertTrue(entries.first { it.id == "practice_questions" }.enabled)
+        assertTrue(entries.first { it.id == "dictation" }.enabled)
         assertTrue(entries.first { it.id == "wrong_questions" }.enabled)
+        assertTrue(entries.first { it.id == "paste_text" }.enabled)
         assertFalse(entries.first { it.id == "photo_scan" }.enabled)
         assertEquals("待接入", entries.first { it.id == "photo_scan" }.statusLabel)
-        assertFalse(entries.first { it.id == "ai_material_search" }.enabled)
+        assertTrue(entries.first { it.id == "chat_light" }.enabled)
     }
 
     @Test
@@ -44,6 +53,7 @@ class BrainyPalParentWorkbenchUiTest {
     fun `workbench chips prioritize pending material ocr confirmation and active tasks`() {
         val chips = BrainyPalParentWorkbenchUi.summaryChips(
             draftMaterials = listOf(material("m1"), material("m2")),
+            pendingTasks = listOf(pendingTask()),
             tasks = listOf(
                 dictationTask(
                     taskId = "ocr-task",
@@ -56,9 +66,62 @@ class BrainyPalParentWorkbenchUiTest {
         )
 
         assertEquals(
-            listOf("待确认材料 2", "待确认 OCR 1", "进行中任务 1"),
+            listOf("待确认材料 2", "待发任务 1", "待确认 OCR 1", "进行中任务 1"),
             chips.map { "${it.label} ${it.count}" },
         )
+    }
+
+    @Test
+    fun `pending task cards use parent status label instead of draft copy`() {
+        val cards = BrainyPalParentWorkbenchUi.pendingTaskCards(
+            listOf(pendingTask(title = "口算待发任务"))
+        )
+
+        assertEquals("口算待发任务", cards.single().title)
+        assertEquals("待发任务", cards.single().statusLabel)
+        assertEquals("2 题", cards.single().itemCountLabel)
+        assertEquals(listOf("检查", "下发"), cards.single().actionLabels)
+        assertFalse(cards.single().statusLabel.contains("草稿"))
+    }
+
+    @Test
+    fun `import confirmation expands candidate content when answer is missing`() {
+        val sections = BrainyPalParentWorkbenchUi.importConfirmationSections(
+            importSession(riskFlags = listOf("missing_reference_answer"))
+        )
+
+        assertEquals(
+            listOf("AI 判断", "候选内容", "孩子体验预览", "下发设置"),
+            sections.map { it.label },
+        )
+        assertTrue(sections.first { it.id == "candidate_content" }.expanded)
+        assertFalse(sections.first { it.id == "child_preview" }.expanded)
+        assertEquals(
+            listOf("保存为待发任务", "确认并立即下发"),
+            BrainyPalParentWorkbenchUi.importConfirmationActions(importSession()).map { it.label },
+        )
+    }
+
+    @Test
+    fun `import confirmation stays compact for high confidence dictation`() {
+        val sections = BrainyPalParentWorkbenchUi.importConfirmationSections(
+            importSession(
+                entryGoal = "dictation",
+                riskFlags = emptyList(),
+                preview = BrainyPalParentImportSessionPreview(taskType = "dictation"),
+                candidates = listOf(
+                    BrainyPalParentImportSessionCandidate(
+                        candidateId = "candidate_1",
+                        kind = "dictation_entry",
+                        prompt = "认真",
+                    )
+                ),
+            )
+        )
+
+        assertTrue(sections.first { it.id == "ai_judgement" }.expanded)
+        assertFalse(sections.first { it.id == "candidate_content" }.expanded)
+        assertFalse(sections.first { it.id == "send_settings" }.expanded)
     }
 
     @Test
@@ -118,6 +181,49 @@ class BrainyPalParentWorkbenchUiTest {
             materialId = materialId,
             materialType = "dictation",
             title = "听写材料 $materialId",
+        )
+    }
+
+    private fun pendingTask(
+        taskId: String = "task_pending_1",
+        title: String = "待发练习",
+    ): BrainyPalParentPracticeTaskView {
+        return BrainyPalParentPracticeTaskView(
+            taskId = taskId,
+            title = title,
+            subject = "数学",
+            mode = "practice",
+            status = "draft",
+            parentStatusLabel = "待发任务",
+            totalItems = 2,
+            childVisible = false,
+        )
+    }
+
+    private fun importSession(
+        entryGoal: String = "practice",
+        riskFlags: List<String> = emptyList(),
+        preview: BrainyPalParentImportSessionPreview = BrainyPalParentImportSessionPreview(
+            taskType = "practice",
+        ),
+        candidates: List<BrainyPalParentImportSessionCandidate> = listOf(
+            BrainyPalParentImportSessionCandidate(
+                candidateId = "candidate_1",
+                kind = "question",
+                prompt = "1+1=?",
+                riskFlags = riskFlags,
+            )
+        ),
+    ): BrainyPalParentImportSession {
+        return BrainyPalParentImportSession(
+            sessionId = "import_1",
+            entryGoal = entryGoal,
+            title = "口算练习",
+            subject = "数学",
+            rawText = "1. 1+1=?",
+            riskFlags = riskFlags,
+            candidates = candidates,
+            preview = preview,
         )
     }
 

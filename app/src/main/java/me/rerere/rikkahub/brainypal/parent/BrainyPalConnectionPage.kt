@@ -70,8 +70,12 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalDueWrongQuestionReviewItem
 import me.rerere.rikkahub.brainypal.shared.BrainyPalManagementPin
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentApi
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentApiFactory
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterialComposer
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalSendPendingTaskRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskSummary
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskWorkbenchResponse
@@ -120,6 +124,8 @@ fun BrainyPalConnectionPage(
     var materialRawText by remember { mutableStateOf("") }
     var draftMaterials by remember { mutableStateOf<List<BrainyPalParentMaterial>>(emptyList()) }
     var confirmedMaterials by remember { mutableStateOf<List<BrainyPalParentMaterial>>(emptyList()) }
+    var pendingTasks by remember { mutableStateOf<List<BrainyPalParentPracticeTaskView>>(emptyList()) }
+    var currentImportSession by remember { mutableStateOf<BrainyPalParentImportSession?>(null) }
     var parentWorkbench by remember {
         mutableStateOf(BrainyPalParentWorkbench.from(BrainyPalParentTaskWorkbenchResponse()))
     }
@@ -130,21 +136,34 @@ fun BrainyPalConnectionPage(
         mutableStateOf(!settings.brainyPalChildConnection.isConfigured())
     }
     var activeParentSection by remember { mutableStateOf("supply") }
-    var activeSupplyEntryId by remember { mutableStateOf("paste_text") }
+    var activeSupplyEntryId by remember { mutableStateOf("practice_questions") }
     var previewOcrCard by remember { mutableStateOf<BrainyPalParentOcrEvidenceCard?>(null) }
 
     fun updateWorkbench(
         drafts: List<BrainyPalParentMaterial> = draftMaterials,
         confirmed: List<BrainyPalParentMaterial> = confirmedMaterials,
+        pending: List<BrainyPalParentPracticeTaskView> = pendingTasks,
         tasks: List<BrainyPalChildPracticeTaskDetail> = parentTasks,
     ) {
         parentWorkbench = BrainyPalParentWorkbench.from(
             BrainyPalParentTaskWorkbenchResponse(
                 draftMaterials = drafts,
                 confirmedMaterials = confirmed,
+                pendingTasks = pending,
                 recentTasks = tasks,
             )
         )
+    }
+
+    fun applyWorkbenchResponse(
+        response: BrainyPalParentTaskWorkbenchResponse,
+    ): List<BrainyPalChildPracticeTaskDetail> {
+        draftMaterials = response.draftMaterials
+        confirmedMaterials = response.confirmedMaterials
+        pendingTasks = response.pendingTasks
+        parentTasks = response.recentTasks
+        parentWorkbench = BrainyPalParentWorkbench.from(response)
+        return response.recentTasks
     }
 
     fun runParentAction(
@@ -254,6 +273,7 @@ fun BrainyPalConnectionPage(
                 val supplyEntries = BrainyPalParentWorkbenchUi.supplyEntries(configured)
                 val summaryChips = BrainyPalParentWorkbenchUi.summaryChips(
                     draftMaterials = draftMaterials,
+                    pendingTasks = pendingTasks,
                     tasks = parentTasks,
                 )
                 item {
@@ -272,17 +292,12 @@ fun BrainyPalConnectionPage(
                         },
                         onStructuredImport = {
                             activeParentSection = "supply"
-                            activeSupplyEntryId = "paste_text"
+                            activeSupplyEntryId = "practice_questions"
                             scope.launch { listState.animateScrollToItem(3) }
                         },
                         onRefresh = {
                             runParentAction("已刷新父母工作台") { api ->
-                                val response = api.getTaskWorkbench()
-                                draftMaterials = response.draftMaterials
-                                confirmedMaterials = response.confirmedMaterials
-                                parentTasks = response.recentTasks
-                                parentWorkbench = BrainyPalParentWorkbench.from(response)
-                                response.recentTasks
+                                applyWorkbenchResponse(api.getTaskWorkbench())
                             }
                         },
                     )
@@ -480,71 +495,103 @@ fun BrainyPalConnectionPage(
                                 }
                             }
                         }
-                item {
-                    ParentMaterialImportCard(
-                        configured = configured,
-                        busy = parentBusy,
-                        title = materialTitle,
-                        subject = materialSubject,
-                        rawText = materialRawText,
-                        draftMaterials = draftMaterials,
-                        onTitleChange = { materialTitle = it },
-                        onSubjectChange = { materialSubject = it },
-                        onRawTextChange = { materialRawText = it },
-                        onImport = {
-                            val request = BrainyPalParentMaterialComposer.importTextRequest(
+                        item {
+                            ParentMaterialImportCard(
+                                configured = configured,
+                                busy = parentBusy,
                                 title = materialTitle,
                                 subject = materialSubject,
                                 rawText = materialRawText,
+                                draftMaterials = draftMaterials,
+                                importSession = currentImportSession,
+                                pendingTasks = pendingTasks,
+                                onTitleChange = { materialTitle = it },
+                                onSubjectChange = { materialSubject = it },
+                                onRawTextChange = { materialRawText = it },
+                                onImport = {
+                                    if (materialRawText.isBlank()) {
+                                        parentMessage = "请先粘贴或输入作业材料"
+                                        return@ParentMaterialImportCard
+                                    }
+                                    val request = BrainyPalParentImportSessionComposer.textRequest(
+                                        entryGoal = parentEntryGoalForSupplyEntry(activeSupplyEntryId),
+                                        title = materialTitle,
+                                        subject = materialSubject,
+                                        rawText = materialRawText,
+                                    )
+                                    runParentAction("已生成确认方案，可保存为待发任务") { api ->
+                                        currentImportSession = api.createImportSession(request)
+                                        null
+                                    }
+                                },
+                                onSaveImportSession = { session ->
+                                    runParentAction("已保存为待发任务：${session.title}") { api ->
+                                        val pending = api.createPendingTaskFromImportSession(session.sessionId)
+                                        val updatedPending = listOf(pending) + pendingTasks.filterNot {
+                                            it.taskId == pending.taskId
+                                        }
+                                        pendingTasks = updatedPending
+                                        currentImportSession = null
+                                        updateWorkbench(pending = updatedPending)
+                                        null
+                                    }
+                                },
+                                onSendImportSession = { session ->
+                                    runParentAction("已确认并下发：${session.title}") { api ->
+                                        val pending = api.createPendingTaskFromImportSession(session.sessionId)
+                                        api.sendPendingTask(
+                                            taskId = pending.taskId,
+                                            request = BrainyPalSendPendingTaskRequest(confirmOverload = true),
+                                        )
+                                        currentImportSession = null
+                                        applyWorkbenchResponse(api.getTaskWorkbench())
+                                    }
+                                },
+                                onSendPendingTask = { task ->
+                                    runParentAction("已下发：${task.title}") { api ->
+                                        api.sendPendingTask(
+                                            taskId = task.taskId,
+                                            request = BrainyPalSendPendingTaskRequest(confirmOverload = true),
+                                        )
+                                        applyWorkbenchResponse(api.getTaskWorkbench())
+                                    }
+                                },
+                                onConfirm = { material ->
+                                    runParentAction("已确认材料：${material.title}") { api ->
+                                        val confirmed = api.confirmMaterial(material.materialId)
+                                        draftMaterials = draftMaterials.filterNot {
+                                            it.materialId == confirmed.materialId
+                                        }
+                                        confirmedMaterials = listOf(confirmed) + confirmedMaterials
+                                            .filterNot { it.materialId == confirmed.materialId }
+                                        updateWorkbench(drafts = draftMaterials, confirmed = confirmedMaterials)
+                                        null
+                                    }
+                                },
+                                onConfirmAndDispatch = { material ->
+                                    runParentAction("已确认并下发：${material.title}") { api ->
+                                        val confirmed = api.confirmMaterial(material.materialId)
+                                        val task = api.createTaskFromMaterial(
+                                            confirmed.materialId,
+                                            BrainyPalParentMaterialComposer.taskRequest(title = confirmed.title),
+                                        )
+                                        draftMaterials = draftMaterials.filterNot {
+                                            it.materialId == confirmed.materialId
+                                        }
+                                        confirmedMaterials = listOf(confirmed) + confirmedMaterials
+                                            .filterNot { it.materialId == confirmed.materialId }
+                                        val tasks = listOf(task) + parentTasks.filterNot { it.taskId == task.taskId }
+                                        parentTasks = tasks
+                                        updateWorkbench(
+                                            drafts = draftMaterials,
+                                            confirmed = confirmedMaterials,
+                                            tasks = tasks,
+                                        )
+                                        tasks
+                                    }
+                                },
                             )
-                            if (request == null) {
-                                parentMessage = "请先粘贴或输入作业材料"
-                                return@ParentMaterialImportCard
-                            }
-                            runParentAction("已生成材料候选，请确认后下发") { api ->
-                                val material = api.importTextMaterial(request)
-                                draftMaterials = listOf(material) + draftMaterials
-                                    .filterNot { it.materialId == material.materialId }
-                                updateWorkbench(drafts = draftMaterials)
-                                null
-                            }
-                        },
-                        onConfirm = { material ->
-                            runParentAction("已确认材料：${material.title}") { api ->
-                                val confirmed = api.confirmMaterial(material.materialId)
-                                draftMaterials = draftMaterials.filterNot {
-                                    it.materialId == confirmed.materialId
-                                }
-                                confirmedMaterials = listOf(confirmed) + confirmedMaterials
-                                    .filterNot { it.materialId == confirmed.materialId }
-                                updateWorkbench(drafts = draftMaterials, confirmed = confirmedMaterials)
-                                null
-                            }
-                        },
-                        onConfirmAndDispatch = { material ->
-                            runParentAction("已确认并下发：${material.title}") { api ->
-                                val confirmed = api.confirmMaterial(material.materialId)
-                                val task = api.createTaskFromMaterial(
-                                    confirmed.materialId,
-                                    BrainyPalParentMaterialComposer.taskRequest(title = confirmed.title),
-                                )
-                                draftMaterials = draftMaterials.filterNot {
-                                    it.materialId == confirmed.materialId
-                                }
-                                confirmedMaterials = listOf(confirmed) + confirmedMaterials
-                                    .filterNot { it.materialId == confirmed.materialId }
-                                val tasks = listOf(task) + parentTasks.filterNot { it.taskId == task.taskId }
-                                parentTasks = tasks
-                                updateWorkbench(
-                                    drafts = draftMaterials,
-                                    confirmed = confirmedMaterials,
-                                    tasks = tasks,
-                                )
-                                tasks
-                            }
-                        },
-                    )
-                }
+                        }
                 item {
                     ParentTaskSupplyCard(
                         configured = configured,
@@ -613,6 +660,17 @@ fun BrainyPalConnectionPage(
         ParentOcrImagePreviewDialog(card = card) {
             previewOcrCard = null
         }
+    }
+}
+
+private fun parentEntryGoalForSupplyEntry(entryId: String): String {
+    return when (entryId) {
+        "dictation" -> "dictation"
+        "reading" -> "reading"
+        "recitation" -> "recitation"
+        "wrong_questions" -> "review"
+        "paste_text", "chat_light" -> "quick"
+        else -> "practice"
     }
 }
 
@@ -1042,10 +1100,15 @@ private fun ParentMaterialImportCard(
     subject: String,
     rawText: String,
     draftMaterials: List<BrainyPalParentMaterial>,
+    importSession: BrainyPalParentImportSession?,
+    pendingTasks: List<BrainyPalParentPracticeTaskView>,
     onTitleChange: (String) -> Unit,
     onSubjectChange: (String) -> Unit,
     onRawTextChange: (String) -> Unit,
     onImport: () -> Unit,
+    onSaveImportSession: (BrainyPalParentImportSession) -> Unit,
+    onSendImportSession: (BrainyPalParentImportSession) -> Unit,
+    onSendPendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
     onConfirm: (BrainyPalParentMaterial) -> Unit,
     onConfirmAndDispatch: (BrainyPalParentMaterial) -> Unit,
 ) {
@@ -1098,11 +1161,26 @@ private fun ParentMaterialImportCard(
                 enabled = configured && !busy,
                 onClick = onImport,
             ) {
-                Text("生成候选材料")
+                Text("生成确认方案")
+            }
+            importSession?.let { session ->
+                ParentImportSessionConfirmationCard(
+                    session = session,
+                    busy = busy,
+                    onSavePending = { onSaveImportSession(session) },
+                    onSendNow = { onSendImportSession(session) },
+                )
+            }
+            if (pendingTasks.isNotEmpty()) {
+                ParentPendingTaskQueue(
+                    pendingTasks = pendingTasks,
+                    busy = busy,
+                    onSendPendingTask = onSendPendingTask,
+                )
             }
             if (draftMaterials.isEmpty()) {
                 Text(
-                    text = "候选材料会先停在这里，确认后才会下发给孩子。",
+                    text = "确认方案会先停在这里，保存为待发任务后孩子仍不可见；明确下发后孩子端才会看到。",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             } else {
@@ -1114,6 +1192,94 @@ private fun ParentMaterialImportCard(
                         onConfirm = { onConfirm(material) },
                         onConfirmAndDispatch = { onConfirmAndDispatch(material) },
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ParentImportSessionConfirmationCard(
+    session: BrainyPalParentImportSession,
+    busy: Boolean,
+    onSavePending: () -> Unit,
+    onSendNow: () -> Unit,
+) {
+    val sections = BrainyPalParentWorkbenchUi.importConfirmationSections(session)
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("AI 确认方案", style = MaterialTheme.typography.titleSmall)
+            Text(session.title, style = MaterialTheme.typography.bodyMedium)
+            sections.forEach { section ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "${section.label} · ${if (section.expanded) "需查看" else "已收起"}",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (section.expanded) BrainyPalChildTheme.amberText else BrainyPalChildTheme.cyanAccent,
+                    )
+                    Text(section.detail, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy,
+                    onClick = onSavePending,
+                ) {
+                    Text("保存为待发任务")
+                }
+                Button(
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy,
+                    onClick = onSendNow,
+                ) {
+                    Text("确认并立即下发")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ParentPendingTaskQueue(
+    pendingTasks: List<BrainyPalParentPracticeTaskView>,
+    busy: Boolean,
+    onSendPendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
+) {
+    val cards = BrainyPalParentWorkbenchUi.pendingTaskCards(pendingTasks)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("待发任务", style = MaterialTheme.typography.titleSmall)
+        cards.forEachIndexed { index, card ->
+            if (index > 0) HorizontalDivider()
+            val task = pendingTasks.first { it.taskId == card.taskId }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "${card.kindLabel} · ${card.statusLabel} · ${card.itemCountLabel}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = BrainyPalChildTheme.amberText,
+                )
+                Text(card.title, style = MaterialTheme.typography.bodyMedium)
+                Text(card.childVisibilityLabel, style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        enabled = false,
+                        onClick = {},
+                    ) {
+                        Text("检查")
+                    }
+                    Button(
+                        modifier = Modifier.weight(1f),
+                        enabled = !busy,
+                        onClick = { onSendPendingTask(task) },
+                    ) {
+                        Text("下发")
+                    }
                 }
             }
         }
