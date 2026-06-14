@@ -8,6 +8,7 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWorkloadGuardConflict
 
 data class BrainyPalParentSupplyEntry(
     val id: String,
@@ -37,6 +38,15 @@ data class BrainyPalParentPendingTaskCard(
     val kindLabel: String,
     val itemCountLabel: String,
     val childVisibilityLabel: String,
+    val actionLabels: List<String>,
+)
+
+data class BrainyPalParentWorkloadGuardPrompt(
+    val taskId: String,
+    val taskTitle: String,
+    val title: String,
+    val message: String,
+    val loadSummary: String,
     val actionLabels: List<String>,
 )
 
@@ -191,9 +201,23 @@ object BrainyPalParentWorkbenchUi {
                 kindLabel = task.kindLabel,
                 itemCountLabel = "${task.totalItems} ${itemUnit(task.mode)}",
                 childVisibilityLabel = if (task.childVisible) "孩子已可见" else "孩子暂不可见",
-                actionLabels = listOf("检查", "下发"),
+                actionLabels = listOf("检查", "编辑", "下发", "归档", "删除"),
             )
         }
+    }
+
+    fun workloadGuardPrompt(
+        task: BrainyPalParentPracticeTaskView,
+        guard: BrainyPalParentWorkloadGuardConflict,
+    ): BrainyPalParentWorkloadGuardPrompt {
+        return BrainyPalParentWorkloadGuardPrompt(
+            taskId = task.taskId,
+            taskTitle = task.title,
+            title = "先确认孩子今天的负载",
+            message = guard.message.ifBlank { "今天已经有较多待完成任务，确认后仍可下发。" },
+            loadSummary = "当前还有 ${guard.activeTasks} 个进行中任务，预计约 ${guard.estimatedMinutes} 分钟。",
+            actionLabels = listOf("先放待发任务", "仍然下发"),
+        )
     }
 
     fun importConfirmationSections(

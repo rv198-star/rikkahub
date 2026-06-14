@@ -2,8 +2,11 @@ package me.rerere.rikkahub.brainypal.shared
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import me.rerere.rikkahub.utils.JsonInstant
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -33,6 +36,22 @@ interface BrainyPalParentApi {
         @Path("task_id") taskId: String,
         @Body request: BrainyPalSendPendingTaskRequest = BrainyPalSendPendingTaskRequest(),
     ): BrainyPalParentPracticeTaskView
+
+    @PATCH("/api/v1/parent/pending-tasks/{task_id}")
+    suspend fun updatePendingTask(
+        @Path("task_id") taskId: String,
+        @Body request: BrainyPalUpdatePendingTaskRequest,
+    ): BrainyPalParentPracticeTaskView
+
+    @POST("/api/v1/parent/pending-tasks/{task_id}/archive")
+    suspend fun archivePendingTask(
+        @Path("task_id") taskId: String,
+    ): BrainyPalParentPracticeTaskView
+
+    @DELETE("/api/v1/parent/pending-tasks/{task_id}")
+    suspend fun deletePendingTask(
+        @Path("task_id") taskId: String,
+    )
 
     @POST("/api/v1/parent/materials/{material_id}/confirm")
     suspend fun confirmMaterial(
@@ -206,6 +225,51 @@ data class BrainyPalCreatePendingTaskFromImportSessionRequest(
 data class BrainyPalSendPendingTaskRequest(
     @SerialName("confirm_overload")
     val confirmOverload: Boolean = false,
+)
+
+@Serializable
+data class BrainyPalUpdatePendingTaskRequest(
+    val title: String? = null,
+    val instructions: String? = null,
+)
+
+@Serializable
+data class BrainyPalParentWorkloadGuardConflict(
+    val message: String = "",
+    @SerialName("active_tasks")
+    val activeTasks: Int = 0,
+    @SerialName("estimated_minutes")
+    val estimatedMinutes: Int = 0,
+    @SerialName("active_task_warning_limit")
+    val activeTaskWarningLimit: Int = 0,
+    @SerialName("estimated_minutes_warning_limit")
+    val estimatedMinutesWarningLimit: Int = 0,
+) {
+    companion object {
+        fun fromErrorBody(body: String?): BrainyPalParentWorkloadGuardConflict? {
+            if (body.isNullOrBlank()) return null
+            return runCatching {
+                val envelope = JsonInstant.decodeFromString<BrainyPalParentApiErrorEnvelope>(body)
+                val error = envelope.error ?: return null
+                if (error.code != "workload_guard_requires_confirmation") return null
+                error.details.copy(
+                    message = error.details.message.ifBlank { error.message },
+                )
+            }.getOrNull()
+        }
+    }
+}
+
+@Serializable
+private data class BrainyPalParentApiErrorEnvelope(
+    val error: BrainyPalParentApiError? = null,
+)
+
+@Serializable
+private data class BrainyPalParentApiError(
+    val code: String = "",
+    val message: String = "",
+    val details: BrainyPalParentWorkloadGuardConflict = BrainyPalParentWorkloadGuardConflict(),
 )
 
 @Serializable

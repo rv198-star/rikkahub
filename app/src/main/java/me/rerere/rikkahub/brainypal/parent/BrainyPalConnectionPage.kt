@@ -26,6 +26,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -75,7 +76,9 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterialComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWorkloadGuardConflict
 import me.rerere.rikkahub.brainypal.shared.BrainyPalSendPendingTaskRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalUpdatePendingTaskRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskSummary
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskWorkbenchResponse
@@ -91,6 +94,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+import retrofit2.HttpException
 import kotlin.uuid.Uuid
 
 @Composable
@@ -138,6 +142,11 @@ fun BrainyPalConnectionPage(
     var activeParentSection by remember { mutableStateOf("supply") }
     var activeSupplyEntryId by remember { mutableStateOf("practice_questions") }
     var previewOcrCard by remember { mutableStateOf<BrainyPalParentOcrEvidenceCard?>(null) }
+    var workloadGuardPrompt by remember { mutableStateOf<BrainyPalParentWorkloadGuardPrompt?>(null) }
+    var pendingTaskReview by remember { mutableStateOf<BrainyPalChildPracticeTaskDetail?>(null) }
+    var editingPendingTask by remember { mutableStateOf<BrainyPalParentPracticeTaskView?>(null) }
+    var pendingEditTitle by remember { mutableStateOf("") }
+    var pendingEditInstructions by remember { mutableStateOf("") }
 
     fun updateWorkbench(
         drafts: List<BrainyPalParentMaterial> = draftMaterials,
@@ -190,6 +199,102 @@ fun BrainyPalConnectionPage(
                     throw error
                 }
                 parentMessage = error.message ?: "暂时连不上 BrainyPal"
+            } finally {
+                parentBusy = false
+            }
+        }
+    }
+
+    fun parentApiFromSettings(): BrainyPalParentApi? {
+        val connection = settings.brainyPalChildConnection
+        if (!connection.isConfigured()) {
+            parentMessage = "请先保存 BrainyPal 服务连接"
+            return null
+        }
+        return parentApiFactory.create(
+            BrainyPalChildModePolicy.agentServiceRootUrl(connection),
+            connection.apiKey,
+        )
+    }
+
+    fun workloadGuardFrom(error: Throwable): BrainyPalParentWorkloadGuardConflict? {
+        if (error !is HttpException || error.code() != 409) return null
+        return BrainyPalParentWorkloadGuardConflict.fromErrorBody(
+            error.response()?.errorBody()?.string()
+        )
+    }
+
+    fun runSendPendingTask(
+        task: BrainyPalParentPracticeTaskView,
+        confirmOverload: Boolean = false,
+    ) {
+        scope.launch {
+            val api = parentApiFromSettings() ?: return@launch
+            parentBusy = true
+            parentMessage = if (confirmOverload) {
+                "正在下发待发任务..."
+            } else {
+                "正在检查孩子今天的任务负载..."
+            }
+            try {
+                api.sendPendingTask(
+                    taskId = task.taskId,
+                    request = BrainyPalSendPendingTaskRequest(confirmOverload = confirmOverload),
+                )
+                workloadGuardPrompt = null
+                applyWorkbenchResponse(api.getTaskWorkbench())
+                parentMessage = "已下发：${task.title}"
+            } catch (error: Throwable) {
+                if (error is CancellationException) {
+                    throw error
+                }
+                val guard = workloadGuardFrom(error)
+                if (guard != null) {
+                    workloadGuardPrompt = BrainyPalParentWorkbenchUi.workloadGuardPrompt(task, guard)
+                    parentMessage = guard.message
+                } else {
+                    parentMessage = error.message ?: "暂时连不上 BrainyPal"
+                }
+            } finally {
+                parentBusy = false
+            }
+        }
+    }
+
+    fun runCreateAndSendImportSession(session: BrainyPalParentImportSession) {
+        scope.launch {
+            val api = parentApiFromSettings() ?: return@launch
+            parentBusy = true
+            parentMessage = "正在生成待发任务并检查今日负载..."
+            var createdPending: BrainyPalParentPracticeTaskView? = null
+            try {
+                val pending = api.createPendingTaskFromImportSession(session.sessionId)
+                createdPending = pending
+                val updatedPending = listOf(pending) + pendingTasks.filterNot {
+                    it.taskId == pending.taskId
+                }
+                pendingTasks = updatedPending
+                currentImportSession = null
+                updateWorkbench(pending = updatedPending)
+                api.sendPendingTask(
+                    taskId = pending.taskId,
+                    request = BrainyPalSendPendingTaskRequest(confirmOverload = false),
+                )
+                workloadGuardPrompt = null
+                applyWorkbenchResponse(api.getTaskWorkbench())
+                parentMessage = "已确认并下发：${session.title}"
+            } catch (error: Throwable) {
+                if (error is CancellationException) {
+                    throw error
+                }
+                val guard = workloadGuardFrom(error)
+                val task = createdPending
+                if (guard != null && task != null) {
+                    workloadGuardPrompt = BrainyPalParentWorkbenchUi.workloadGuardPrompt(task, guard)
+                    parentMessage = guard.message
+                } else {
+                    parentMessage = error.message ?: "暂时连不上 BrainyPal"
+                }
             } finally {
                 parentBusy = false
             }
@@ -537,22 +642,35 @@ fun BrainyPalConnectionPage(
                                     }
                                 },
                                 onSendImportSession = { session ->
-                                    runParentAction("已确认并下发：${session.title}") { api ->
-                                        val pending = api.createPendingTaskFromImportSession(session.sessionId)
-                                        api.sendPendingTask(
-                                            taskId = pending.taskId,
-                                            request = BrainyPalSendPendingTaskRequest(confirmOverload = true),
-                                        )
-                                        currentImportSession = null
+                                    runCreateAndSendImportSession(session)
+                                },
+                                onSendPendingTask = { task ->
+                                    runSendPendingTask(task)
+                                },
+                                onReviewPendingTask = { task ->
+                                    runParentAction("已打开待发任务：${task.title}") { api ->
+                                        pendingTaskReview = api.getPracticeTask(task.taskId)
+                                        null
+                                    }
+                                },
+                                onEditPendingTask = { task ->
+                                    runParentAction("已打开编辑：${task.title}") { api ->
+                                        val detail = api.getPracticeTask(task.taskId)
+                                        editingPendingTask = task
+                                        pendingEditTitle = detail.title
+                                        pendingEditInstructions = detail.task?.instructions.orEmpty()
+                                        null
+                                    }
+                                },
+                                onArchivePendingTask = { task ->
+                                    runParentAction("已归档：${task.title}") { api ->
+                                        api.archivePendingTask(task.taskId)
                                         applyWorkbenchResponse(api.getTaskWorkbench())
                                     }
                                 },
-                                onSendPendingTask = { task ->
-                                    runParentAction("已下发：${task.title}") { api ->
-                                        api.sendPendingTask(
-                                            taskId = task.taskId,
-                                            request = BrainyPalSendPendingTaskRequest(confirmOverload = true),
-                                        )
+                                onDeletePendingTask = { task ->
+                                    runParentAction("已删除：${task.title}") { api ->
+                                        api.deletePendingTask(task.taskId)
                                         applyWorkbenchResponse(api.getTaskWorkbench())
                                     }
                                 },
@@ -661,6 +779,181 @@ fun BrainyPalConnectionPage(
             previewOcrCard = null
         }
     }
+    workloadGuardPrompt?.let { prompt ->
+        ParentWorkloadGuardDialog(
+            prompt = prompt,
+            busy = parentBusy,
+            onKeepPending = { workloadGuardPrompt = null },
+            onConfirmSend = {
+                val task = pendingTasks.firstOrNull { it.taskId == prompt.taskId }
+                    ?: BrainyPalParentPracticeTaskView(
+                        taskId = prompt.taskId,
+                        title = prompt.taskTitle,
+                    )
+                runSendPendingTask(task, confirmOverload = true)
+            },
+        )
+    }
+    pendingTaskReview?.let { detail ->
+        ParentPendingTaskReviewDialog(
+            detail = detail,
+            onDismiss = { pendingTaskReview = null },
+        )
+    }
+    editingPendingTask?.let { task ->
+        ParentPendingTaskEditDialog(
+            task = task,
+            title = pendingEditTitle,
+            instructions = pendingEditInstructions,
+            busy = parentBusy,
+            onTitleChange = { pendingEditTitle = it },
+            onInstructionsChange = { pendingEditInstructions = it },
+            onDismiss = { editingPendingTask = null },
+            onSave = {
+                runParentAction("已更新待发任务：${pendingEditTitle.ifBlank { task.title }}") { api ->
+                    val updated = api.updatePendingTask(
+                        taskId = task.taskId,
+                        request = BrainyPalUpdatePendingTaskRequest(
+                            title = pendingEditTitle.ifBlank { task.title },
+                            instructions = pendingEditInstructions,
+                        ),
+                    )
+                    pendingTasks = listOf(updated) + pendingTasks.filterNot {
+                        it.taskId == updated.taskId
+                    }
+                    editingPendingTask = null
+                    applyWorkbenchResponse(api.getTaskWorkbench())
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ParentWorkloadGuardDialog(
+    prompt: BrainyPalParentWorkloadGuardPrompt,
+    busy: Boolean,
+    onKeepPending: () -> Unit,
+    onConfirmSend: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onKeepPending,
+        title = { Text(prompt.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(prompt.taskTitle, style = MaterialTheme.typography.titleSmall)
+                Text(prompt.message, style = MaterialTheme.typography.bodyMedium)
+                Text(prompt.loadSummary, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !busy,
+                onClick = onConfirmSend,
+            ) {
+                Text("仍然下发")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = onKeepPending,
+            ) {
+                Text("先放待发任务")
+            }
+        },
+    )
+}
+
+@Composable
+private fun ParentPendingTaskReviewDialog(
+    detail: BrainyPalChildPracticeTaskDetail,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("检查待发任务") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(detail.title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = "${detail.taskKindLabel} · ${detail.items.size} 项 · 孩子暂不可见",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BrainyPalChildTheme.amberText,
+                )
+                detail.task?.instructions?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+                detail.items.take(6).forEachIndexed { index, item ->
+                    Text(
+                        text = "${index + 1}. ${item.prompt.take(80)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        },
+    )
+}
+
+@Composable
+private fun ParentPendingTaskEditDialog(
+    task: BrainyPalParentPracticeTaskView,
+    title: String,
+    instructions: String,
+    busy: Boolean,
+    onTitleChange: (String) -> Unit,
+    onInstructionsChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑待发任务") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "${task.kindLabel} · ${task.totalItems} 项 · 孩子暂不可见",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BrainyPalChildTheme.amberText,
+                )
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = onTitleChange,
+                    label = { Text("任务标题") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = instructions,
+                    onValueChange = onInstructionsChange,
+                    label = { Text("给孩子的说明") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !busy && title.isNotBlank(),
+                onClick = onSave,
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = onDismiss,
+            ) {
+                Text("取消")
+            }
+        },
+    )
 }
 
 private fun parentEntryGoalForSupplyEntry(entryId: String): String {
@@ -1109,6 +1402,10 @@ private fun ParentMaterialImportCard(
     onSaveImportSession: (BrainyPalParentImportSession) -> Unit,
     onSendImportSession: (BrainyPalParentImportSession) -> Unit,
     onSendPendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
+    onReviewPendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
+    onEditPendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
+    onArchivePendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
+    onDeletePendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
     onConfirm: (BrainyPalParentMaterial) -> Unit,
     onConfirmAndDispatch: (BrainyPalParentMaterial) -> Unit,
 ) {
@@ -1176,6 +1473,10 @@ private fun ParentMaterialImportCard(
                     pendingTasks = pendingTasks,
                     busy = busy,
                     onSendPendingTask = onSendPendingTask,
+                    onReviewPendingTask = onReviewPendingTask,
+                    onEditPendingTask = onEditPendingTask,
+                    onArchivePendingTask = onArchivePendingTask,
+                    onDeletePendingTask = onDeletePendingTask,
                 )
             }
             if (draftMaterials.isEmpty()) {
@@ -1250,6 +1551,10 @@ private fun ParentPendingTaskQueue(
     pendingTasks: List<BrainyPalParentPracticeTaskView>,
     busy: Boolean,
     onSendPendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
+    onReviewPendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
+    onEditPendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
+    onArchivePendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
+    onDeletePendingTask: (BrainyPalParentPracticeTaskView) -> Unit,
 ) {
     val cards = BrainyPalParentWorkbenchUi.pendingTaskCards(pendingTasks)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1268,10 +1573,17 @@ private fun ParentPendingTaskQueue(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
-                        enabled = false,
-                        onClick = {},
+                        enabled = !busy,
+                        onClick = { onReviewPendingTask(task) },
                     ) {
                         Text("检查")
+                    }
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        enabled = !busy,
+                        onClick = { onEditPendingTask(task) },
+                    ) {
+                        Text("编辑")
                     }
                     Button(
                         modifier = Modifier.weight(1f),
@@ -1279,6 +1591,22 @@ private fun ParentPendingTaskQueue(
                         onClick = { onSendPendingTask(task) },
                     ) {
                         Text("下发")
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        enabled = !busy,
+                        onClick = { onArchivePendingTask(task) },
+                    ) {
+                        Text("归档")
+                    }
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        enabled = !busy,
+                        onClick = { onDeletePendingTask(task) },
+                    ) {
+                        Text("删除")
                     }
                 }
             }

@@ -256,6 +256,46 @@ class BrainyPalParentApiTest {
     }
 
     @Test
+    fun `pending task update request encodes editable parent fields`() {
+        val json = JsonInstant.encodeToString(
+            BrainyPalUpdatePendingTaskRequest(
+                title = "周末口算 8 题",
+                instructions = "孩子先独立完成，提交后马上订正。",
+            )
+        )
+
+        assertTrue(json.contains("\"title\":\"周末口算 8 题\""))
+        assertTrue(json.contains("\"instructions\":\"孩子先独立完成，提交后马上订正。\""))
+    }
+
+    @Test
+    fun `workload guard conflict parses agent error envelope`() {
+        val body = """
+            {
+              "error": {
+                "code": "workload_guard_requires_confirmation",
+                "message": "今天已经有较多待完成任务，确认后仍可下发。",
+                "details": {
+                  "message": "今天已经有较多待完成任务，确认后仍可下发。",
+                  "active_tasks": 3,
+                  "estimated_minutes": 25,
+                  "active_task_warning_limit": 3,
+                  "estimated_minutes_warning_limit": 45
+                }
+              }
+            }
+        """.trimIndent()
+
+        val conflict = BrainyPalParentWorkloadGuardConflict.fromErrorBody(body)
+
+        assertEquals("今天已经有较多待完成任务，确认后仍可下发。", conflict?.message)
+        assertEquals(3, conflict?.activeTasks)
+        assertEquals(25, conflict?.estimatedMinutes)
+        assertEquals(3, conflict?.activeTaskWarningLimit)
+        assertEquals(45, conflict?.estimatedMinutesWarningLimit)
+    }
+
+    @Test
     fun `parent practice task creation encodes unified agent contract`() {
         val request = BrainyPalCreateParentPracticeTaskRequest(
             title = "第 12 课生字听写",

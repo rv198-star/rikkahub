@@ -80,8 +80,27 @@ class BrainyPalParentWorkbenchUiTest {
         assertEquals("口算待发任务", cards.single().title)
         assertEquals("待发任务", cards.single().statusLabel)
         assertEquals("2 题", cards.single().itemCountLabel)
-        assertEquals(listOf("检查", "下发"), cards.single().actionLabels)
+        assertEquals(listOf("检查", "编辑", "下发", "归档", "删除"), cards.single().actionLabels)
         assertFalse(cards.single().statusLabel.contains("草稿"))
+    }
+
+    @Test
+    fun `workload guard prompt asks for calm second confirmation`() {
+        val prompt = BrainyPalParentWorkbenchUi.workloadGuardPrompt(
+            task = pendingTask(title = "几何练习"),
+            guard = me.rerere.rikkahub.brainypal.shared.BrainyPalParentWorkloadGuardConflict(
+                message = "今天已经有较多待完成任务，确认后仍可下发。",
+                activeTasks = 3,
+                estimatedMinutes = 25,
+                activeTaskWarningLimit = 3,
+                estimatedMinutesWarningLimit = 45,
+            ),
+        )
+
+        assertEquals("先确认孩子今天的负载", prompt.title)
+        assertEquals("几何练习", prompt.taskTitle)
+        assertEquals("当前还有 3 个进行中任务，预计约 25 分钟。", prompt.loadSummary)
+        assertEquals(listOf("先放待发任务", "仍然下发"), prompt.actionLabels)
     }
 
     @Test
