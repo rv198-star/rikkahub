@@ -6,7 +6,8 @@ import org.junit.Test
 
 class BrainyPalPracticeTaskLifecycleTest {
     @Test
-    fun `pending and assigned tasks are accepted when opened from child task list`() {
+    fun `available pending and assigned tasks are accepted when opened from child task list`() {
+        assertTrue(BrainyPalPracticeTaskLifecycle.shouldAcceptOnOpen("available"))
         assertTrue(BrainyPalPracticeTaskLifecycle.shouldAcceptOnOpen("pending"))
         assertTrue(BrainyPalPracticeTaskLifecycle.shouldAcceptOnOpen("assigned"))
     }
