@@ -77,6 +77,7 @@ fun ColumnScope.ConversationList(
     conversationJobs: Collection<Uuid>,
     listState: LazyListState,
     modifier: Modifier = Modifier,
+    allowConversationActions: Boolean = true,
     onClick: (Conversation) -> Unit = {},
     onDelete: (Conversation) -> Unit = {},
     onRegenerateTitle: (Conversation) -> Unit = {},
@@ -157,6 +158,7 @@ fun ColumnScope.ConversationList(
                         onRegenerateTitle = onRegenerateTitle,
                         onPin = onPin,
                         onMoveToAssistant = onMoveToAssistant,
+                        allowActions = allowConversationActions,
                         modifier = Modifier.animateItem()
                     )
                 }
@@ -223,6 +225,7 @@ private fun ConversationItem(
     selected: Boolean,
     loading: Boolean,
     modifier: Modifier = Modifier,
+    allowActions: Boolean = true,
     onDelete: (Conversation) -> Unit = {},
     onRegenerateTitle: (Conversation) -> Unit = {},
     onPin: (Conversation) -> Unit = {},
@@ -245,8 +248,10 @@ private fun ConversationItem(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 onClick = { onClick(conversation) },
-                onLongClick = {
-                    showDropdownMenu = true
+                onLongClick = if (allowActions) {
+                    { showDropdownMenu = true }
+                } else {
+                    null
                 }
             )
             .background(backgroundColor),
@@ -284,66 +289,68 @@ private fun ConversationItem(
                         }
                 )
             }
-            DropdownMenu(
-                expanded = showDropdownMenu,
-                onDismissRequest = { showDropdownMenu = false },
-            ) {
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            if (conversation.isPinned) stringResource(R.string.unpin_chat) else stringResource(R.string.pin_chat)
-                        )
-                    },
-                    onClick = {
-                        onPin(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(
-                            if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
-                            null
-                        )
-                    }
-                )
+            if (allowActions) {
+                DropdownMenu(
+                    expanded = showDropdownMenu,
+                    onDismissRequest = { showDropdownMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (conversation.isPinned) stringResource(R.string.unpin_chat) else stringResource(R.string.pin_chat)
+                            )
+                        },
+                        onClick = {
+                            onPin(conversation)
+                            showDropdownMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(
+                                if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
+                                null
+                            )
+                        }
+                    )
 
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(id = R.string.chat_page_regenerate_title))
-                    },
-                    onClick = {
-                        onRegenerateTitle(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(HugeIcons.Refresh01, null)
-                    }
-                )
+                    DropdownMenuItem(
+                        text = {
+                            Text(stringResource(id = R.string.chat_page_regenerate_title))
+                        },
+                        onClick = {
+                            onRegenerateTitle(conversation)
+                            showDropdownMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(HugeIcons.Refresh01, null)
+                        }
+                    )
 
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(R.string.chat_page_move_to_assistant))
-                    },
-                    onClick = {
-                        onMoveToAssistant(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(HugeIcons.Forward02, null)
-                    }
-                )
+                    DropdownMenuItem(
+                        text = {
+                            Text(stringResource(R.string.chat_page_move_to_assistant))
+                        },
+                        onClick = {
+                            onMoveToAssistant(conversation)
+                            showDropdownMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(HugeIcons.Forward02, null)
+                        }
+                    )
 
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(id = R.string.chat_page_delete))
-                    },
-                    onClick = {
-                        onDelete(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(HugeIcons.Delete01, null)
-                    }
-                )
+                    DropdownMenuItem(
+                        text = {
+                            Text(stringResource(id = R.string.chat_page_delete))
+                        },
+                        onClick = {
+                            onDelete(conversation)
+                            showDropdownMenu = false
+                        },
+                        leadingIcon = {
+                            Icon(HugeIcons.Delete01, null)
+                        }
+                    )
+                }
             }
         }
     }

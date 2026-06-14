@@ -1,0 +1,111 @@
+{
+  "schema_version": "tplan.v0.1",
+  "mission": {
+    "id": "brainypal-app-alignment",
+    "title": "BrainyPal Android 客户端按 issue 对齐儿童端与父母端",
+    "objective": "按 RikkaHub #6 -> #2 -> #3 -> #4 -> #5 的顺序完成 Android 客户端实现与测试，并保持 BrainyPal Agent Service 依赖只通过 linked issue 管理。",
+    "status": "active",
+    "human_in_loop": 0,
+    "risk_tolerance": 34,
+    "resource_sufficiency": 34,
+    "acceptance_evidence": [
+      {
+        "id": "KR1",
+        "description": "RikkaHub #6 聊天导航/历史/权限边界通过单测、构建和模拟器验收"
+      },
+      {
+        "id": "KR2",
+        "description": "RikkaHub #2 今日任务主闭环通过 BrainyPal 目标单测、全量 app 单测、构建和模拟器验收"
+      },
+      {
+        "id": "KR3",
+        "description": "RikkaHub #3 听写/OCR 在 BrainyPal #82 契约可用后通过目标单测、构建和设备能力烟测"
+      },
+      {
+        "id": "KR4",
+        "description": "RikkaHub #4 朗读/背诵在 BrainyPal #83 契约可用后通过目标单测、构建和手测"
+      },
+      {
+        "id": "KR5",
+        "description": "RikkaHub #5 父母端最小供给链路在 #2 稳定后通过端到端手测"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "RH-6",
+      "parent_id": null,
+      "kind": "task",
+      "level": 1,
+      "title": "RikkaHub #6 聊天页导航、历史入口与权限边界一致性",
+      "status": "completed",
+      "role": "success-critical",
+      "evidence_links": [],
+      "mission_contribution": "先修复明确儿童端体验 bug，为后续任务流提供可信入口与返回路径。",
+      "acceptance_evidence": [
+        "KR1",
+        "KR2",
+        "KR3",
+        "KR4",
+        "KR5"
+      ]
+    },
+    {
+      "id": "RH-2",
+      "parent_id": null,
+      "kind": "task",
+      "level": 1,
+      "title": "RikkaHub #2 原生今日任务领取、作答、提示与提交闭环",
+      "status": "completed",
+      "role": "success-critical",
+      "evidence_links": [],
+      "mission_contribution": "稳住儿童端今日任务主闭环，是听写、背诵和父母端供给链路的承载面。",
+      "acceptance_evidence": [
+        "KR2"
+      ]
+    },
+    {
+      "id": "RH-3",
+      "parent_id": null,
+      "kind": "task",
+      "level": 1,
+      "title": "RikkaHub #3 听写 TTS/语音控制/OCR 确认",
+      "status": "completed",
+      "role": "success-critical",
+      "evidence_links": [],
+      "mission_contribution": "在今日任务主闭环上补听写专属体验，并依赖 BrainyPal #82 契约。",
+      "acceptance_evidence": [
+        "KR3"
+      ]
+    },
+    {
+      "id": "RH-4",
+      "parent_id": null,
+      "kind": "task",
+      "level": 1,
+      "title": "RikkaHub #4 朗读导读与背诵任务体验",
+      "status": "completed",
+      "role": "supporting",
+      "evidence_links": [],
+      "mission_contribution": "在听写之后补朗读/背诵任务类型体验，并依赖 BrainyPal #83 契约。",
+      "acceptance_evidence": [
+        "KR4"
+      ]
+    },
+    {
+      "id": "RH-5",
+      "parent_id": null,
+      "kind": "task",
+      "level": 1,
+      "title": "RikkaHub #5 父母端下发今日任务与确认结果最小闭环",
+      "status": "completed",
+      "role": "success-critical",
+      "evidence_links": [],
+      "mission_contribution": "对齐儿童端供给端，让父母端能下发任务和确认结果。",
+      "acceptance_evidence": [
+        "KR5"
+      ]
+    }
+  ],
+  "active_task_id": null
+}

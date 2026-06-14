@@ -57,7 +57,7 @@ import com.dokar.sonner.rememberToasterState
 import kotlinx.serialization.Serializable
 import me.rerere.highlight.Highlighter
 import me.rerere.highlight.LocalHighlighter
-import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
 import me.rerere.rikkahub.data.db.MigrationState
@@ -86,9 +86,9 @@ import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantMemoryPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantPromptPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantRequestPage
 import me.rerere.rikkahub.ui.pages.backup.BackupPage
-import me.rerere.rikkahub.ui.pages.brainypal.BrainyPalConnectionPage
-import me.rerere.rikkahub.ui.pages.brainypal.BrainyPalHomePage
-import me.rerere.rikkahub.ui.pages.brainypal.BrainyPalPracticePage
+import me.rerere.rikkahub.brainypal.parent.BrainyPalConnectionPage
+import me.rerere.rikkahub.brainypal.child.BrainyPalHomePage
+import me.rerere.rikkahub.brainypal.child.BrainyPalPracticePage
 import me.rerere.rikkahub.ui.pages.chat.ChatPage
 import me.rerere.rikkahub.ui.pages.debug.DebugPage
 import me.rerere.rikkahub.ui.pages.developer.DeveloperPage

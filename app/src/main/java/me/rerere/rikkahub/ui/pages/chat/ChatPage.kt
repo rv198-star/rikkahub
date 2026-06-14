@@ -48,11 +48,16 @@ import kotlinx.coroutines.launch
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
+import me.rerere.hugeicons.stroke.TransactionHistory
+import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.brainypal.child.BrainyPalChildChatDrawerPolicy
+import me.rerere.rikkahub.brainypal.child.BrainyPalChildChatTopStartAction
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
@@ -64,6 +69,7 @@ import me.rerere.rikkahub.ui.components.ai.ChatInput
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.context.Navigator
+import me.rerere.rikkahub.brainypal.child.theme.BrainyPalChildTheme
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.ui.hooks.EditStateContent
 import me.rerere.rikkahub.ui.hooks.useEditState
@@ -265,6 +271,7 @@ private fun ChatPageContent(
                     conversation = conversation,
                     bigScreen = bigScreen,
                     drawerState = drawerState,
+                    navController = navController,
                     previewMode = previewMode,
                     onNewChat = {
                         navigateToChatPage(navController)
@@ -442,6 +449,7 @@ private fun TopBar(
     settings: Settings,
     conversation: Conversation,
     drawerState: DrawerState,
+    navController: Navigator,
     bigScreen: Boolean,
     previewMode: Boolean,
     onClickMenu: () -> Unit,
@@ -450,20 +458,40 @@ private fun TopBar(
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
+    val childMode = BuildConfig.BRAINYPAL_CHILD_MODE
+    val childChatLayout = BrainyPalChildChatDrawerPolicy.layoutFor(childMode)
     val titleState = useEditState<String> {
         onUpdateTitle(it)
     }
 
     TopAppBar(
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+        colors = if (childMode) {
+            BrainyPalChildTheme.topAppBarColors()
+        } else {
+            TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+        },
         navigationIcon = {
             if (!bigScreen) {
-                IconButton(
-                    onClick = {
-                        scope.launch { drawerState.open() }
+                when (childChatLayout.topStartAction) {
+                    BrainyPalChildChatTopStartAction.OpenDrawer -> {
+                        IconButton(
+                            onClick = {
+                                scope.launch { drawerState.open() }
+                            }
+                        ) {
+                            Icon(HugeIcons.Menu03, "Messages")
+                        }
                     }
-                ) {
-                    Icon(HugeIcons.Menu03, "Messages")
+
+                    BrainyPalChildChatTopStartAction.ReturnHome -> {
+                        IconButton(
+                            onClick = {
+                                navController.navigate(childChatLayout.homeReturnTarget)
+                            }
+                        ) {
+                            Icon(HugeIcons.ArrowLeft01, childChatLayout.homeReturnLabel)
+                        }
+                    }
                 }
             }
         },
@@ -471,6 +499,9 @@ private fun TopBar(
             val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
             Surface(
                 onClick = {
+                    if (childMode) {
+                        return@Surface
+                    }
                     if (conversation.messageNodes.isNotEmpty()) {
                         titleState.open(conversation.title)
                     } else {
@@ -484,12 +515,28 @@ private fun TopBar(
                     val model = settings.getCurrentChatModel()
                     val provider = model?.findProvider(providers = settings.providers, checkOverwrite = false)
                     Text(
-                        text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
+                        text = if (childMode) {
+                            conversation.title.ifBlank { "问问 BrainyPal" }
+                        } else {
+                            conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) }
+                        },
                         maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = if (childMode) {
+                            MaterialTheme.typography.titleMedium
+                        } else {
+                            MaterialTheme.typography.bodyMedium
+                        },
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (model != null && provider != null) {
+                    if (childMode) {
+                        Text(
+                            text = "先说你的想法，我会陪你一步步想",
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                            color = LocalContentColor.current.copy(0.65f),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    } else if (model != null && provider != null) {
                         Text(
                             text = "${assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }} / ${model.displayName} (${provider.name})",
                             overflow = TextOverflow.Ellipsis,
@@ -504,12 +551,24 @@ private fun TopBar(
             }
         },
         actions = {
-            IconButton(
-                onClick = {
-                    onClickMenu()
+            if (childChatLayout.showTopBarHistoryAction && !bigScreen) {
+                IconButton(
+                    onClick = {
+                        scope.launch { drawerState.open() }
+                    }
+                ) {
+                    Icon(HugeIcons.TransactionHistory, childChatLayout.historyActionLabel)
                 }
-            ) {
-                Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
+            }
+
+            if (!childMode) {
+                IconButton(
+                    onClick = {
+                        onClickMenu()
+                    }
+                ) {
+                    Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
+                }
             }
 
             IconButton(

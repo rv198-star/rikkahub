@@ -14,7 +14,9 @@ import kotlinx.serialization.json.Json
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.common.http.AcceptLanguageBuilder
 import me.rerere.rikkahub.BuildConfig
-import me.rerere.rikkahub.brainypal.BrainyPalChildApiFactory
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildApiFactory
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentApiFactory
+import me.rerere.rikkahub.brainypal.shared.BrainyPalVoiceApiFactory
 import me.rerere.rikkahub.data.ai.AIRequestInterceptor
 import me.rerere.rikkahub.data.ai.RequestLoggingInterceptor
 import me.rerere.rikkahub.data.ai.transformers.AssistantTemplateLoader
@@ -261,6 +263,20 @@ val dataSourceModule = module {
 
     single {
         BrainyPalChildApiFactory(
+            okHttpClient = get(),
+            json = get(),
+        )
+    }
+
+    single {
+        BrainyPalParentApiFactory(
+            okHttpClient = get(),
+            json = get(),
+        )
+    }
+
+    single {
+        BrainyPalVoiceApiFactory(
             okHttpClient = get(),
             json = get(),
         )

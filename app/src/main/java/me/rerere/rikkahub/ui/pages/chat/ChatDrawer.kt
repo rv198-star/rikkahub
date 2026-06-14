@@ -51,6 +51,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Image02
@@ -65,6 +66,7 @@ import me.rerere.hugeicons.stroke.TransactionHistory
 import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
+import me.rerere.rikkahub.brainypal.child.BrainyPalChildChatDrawerPolicy
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
@@ -99,6 +101,9 @@ fun ChatDrawerContent(
     val isPlayStore = rememberIsPlayStoreVersion()
     val repo = koinInject<ConversationRepository>()
     val childMode = BuildConfig.BRAINYPAL_CHILD_MODE
+    val drawerLayout = remember(childMode) {
+        BrainyPalChildChatDrawerPolicy.layoutFor(childMode)
+    }
 
     val activity = context as ComponentActivity
     val drawerVm: ChatDrawerVM = koinViewModel(viewModelStoreOwner = activity)
@@ -170,16 +175,22 @@ fun ChatDrawerContent(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 UIAvatar(
-                    name = settings.displaySetting.userNickname.ifBlank { stringResource(R.string.user_default_name) },
+                    name = if (childMode) {
+                        "BrainyPal"
+                    } else {
+                        settings.displaySetting.userNickname.ifBlank { stringResource(R.string.user_default_name) }
+                    },
                     value = settings.displaySetting.userAvatar,
                     onUpdate = { newAvatar ->
-                        vm.updateSettings(
-                            settings.copy(
-                                displaySetting = settings.displaySetting.copy(
-                                    userAvatar = newAvatar
+                        if (!childMode) {
+                            vm.updateSettings(
+                                settings.copy(
+                                    displaySetting = settings.displaySetting.copy(
+                                        userAvatar = newAvatar
+                                    )
                                 )
                             )
-                        )
+                        }
                     },
                     modifier = Modifier.size(50.dp),
                 )
@@ -193,29 +204,55 @@ fun ChatDrawerContent(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
-                            text = settings.displaySetting.userNickname.ifBlank { stringResource(R.string.user_default_name) },
+                            text = if (childMode) {
+                                "BrainyPal"
+                            } else {
+                                settings.displaySetting.userNickname.ifBlank { stringResource(R.string.user_default_name) }
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable {
-                                nicknameEditState.open(settings.displaySetting.userNickname)
+                            modifier = if (childMode) {
+                                Modifier
+                            } else {
+                                Modifier.clickable {
+                                    nicknameEditState.open(settings.displaySetting.userNickname)
+                                }
                             }
                         )
 
-                        Icon(
-                            imageVector = HugeIcons.PencilEdit01,
-                            contentDescription = "Edit",
-                            modifier = Modifier
-                                .onClick {
-                                    nicknameEditState.open(settings.displaySetting.userNickname)
-                                }
-                                .size(LocalTextStyle.current.fontSize.toDp())
+                        if (!childMode) {
+                            Icon(
+                                imageVector = HugeIcons.PencilEdit01,
+                                contentDescription = "Edit",
+                                modifier = Modifier
+                                    .onClick {
+                                        nicknameEditState.open(settings.displaySetting.userNickname)
+                                    }
+                                    .size(LocalTextStyle.current.fontSize.toDp())
+                            )
+                        }
+                    }
+                    if (childMode) {
+                        Text(
+                            text = "一起把问题想清楚",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    } else {
+                        Greeting(
+                            style = MaterialTheme.typography.labelMedium,
                         )
                     }
-                    Greeting(
-                        style = MaterialTheme.typography.labelMedium,
-                    )
                 }
+            }
+
+            if (drawerLayout.showHomeReturnAction) {
+                ChildHomeReturnAction(
+                    label = drawerLayout.homeReturnLabel,
+                    onClick = {
+                        navController.navigate(drawerLayout.homeReturnTarget)
+                    },
+                )
             }
 
             if (!childMode) {
@@ -223,8 +260,15 @@ fun ChatDrawerContent(
             }
 
             if (childMode) {
-                Spacer(Modifier.weight(1f))
-            } else {
+                Text(
+                    text = "历史对话",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+            }
+
+            if (drawerLayout.showConversationHistory) {
                 ConversationList(
                     current = current,
                     conversations = conversations,
@@ -233,6 +277,7 @@ fun ChatDrawerContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
+                    allowConversationActions = drawerLayout.allowConversationMaintenanceActions,
                     onClick = {
                         navigateToChatPage(navController, it.id)
                     },
@@ -257,6 +302,8 @@ fun ChatDrawerContent(
                         showMoveToAssistantSheet = true
                     }
                 )
+            } else {
+                Spacer(Modifier.weight(1f))
             }
 
             // 助手选择器
@@ -292,7 +339,7 @@ fun ChatDrawerContent(
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)
             ) {
-                if (childMode) {
+                if (drawerLayout.showFooterHomeShortcut) {
                     DrawerAction(
                         icon = {
                             Icon(HugeIcons.Book03, null)
@@ -304,7 +351,7 @@ fun ChatDrawerContent(
                             navController.navigate(Screen.BrainyPalHome)
                         },
                     )
-                } else {
+                } else if (!childMode) {
                     DrawerAction(
                         icon = {
                             Icon(
@@ -477,6 +524,43 @@ fun ChatDrawerContent(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChildHomeReturnAction(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .padding(horizontal = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                imageVector = HugeIcons.ArrowLeft01,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

@@ -63,7 +63,7 @@ import me.rerere.hugeicons.stroke.WavingHand01
 import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
-import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 import me.rerere.rikkahub.data.datastore.isNotConfigured
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.ui.components.nav.BackButton
@@ -180,7 +180,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                             supportingContent = {
                                 Text(practiceEntry.supportingText)
                             },
-                            headlineContent = { Text("今日练习") },
+                            headlineContent = { Text("今日任务") },
                         )
                         item(
                             onClick = { navController.navigate(Screen.BrainyPalConnection) },

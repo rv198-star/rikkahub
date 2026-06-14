@@ -22,9 +22,10 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.AppScope
-import me.rerere.rikkahub.brainypal.BrainyPalChildConnectionConfig
-import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
-import me.rerere.rikkahub.brainypal.BrainyPalManagementPin
+import me.rerere.rikkahub.BuildConfig
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildConnectionConfig
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
+import me.rerere.rikkahub.brainypal.shared.BrainyPalManagementPin
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
@@ -294,7 +295,13 @@ class SettingsStore(
                 providers = providers,
                 assistants = assistants,
                 ttsProviders = ttsProviders,
-            )
+            ).let { settings ->
+                if (BuildConfig.BRAINYPAL_CHILD_MODE) {
+                    settings.withBrainyPalChildModeDefaults()
+                } else {
+                    settings
+                }
+            }
         }
         .map { settings ->
             // 去重并清理无效引用
@@ -649,6 +656,32 @@ data class BackupReminderConfig(
 )
 
 fun Settings.isNotConfigured() = providers.all { it.models.isEmpty() }
+
+internal fun Settings.withBrainyPalChildModeDefaults(): Settings {
+    val provider = BrainyPalChildModePolicy.brainyPalProvider(brainyPalChildConnection)
+    val modelId = provider.models.single().id
+    val childAssistant = BrainyPalChildModePolicy.brainyPalAssistant(modelId)
+
+    return copy(
+        providers = listOf(provider),
+        assistantId = childAssistant.id,
+        assistants = listOf(childAssistant),
+        chatModelId = modelId,
+        fastModelId = modelId,
+        titleModelId = modelId,
+        translateModeId = modelId,
+        suggestionModelId = modelId,
+        ocrModelId = modelId,
+        compressModelId = modelId,
+        favoriteModels = listOf(modelId),
+        enableSuggestion = false,
+        enableWebSearch = false,
+        mcpServers = emptyList(),
+        modeInjections = emptyList(),
+        lorebooks = emptyList(),
+        quickMessages = emptyList(),
+    )
+}
 
 fun Settings.findModelById(uuid: Uuid?, fallback: Uuid? = null): Model? {
     if (uuid == null && fallback == null) return null

@@ -681,7 +681,13 @@ private fun TextInputRow(
                 },
             shape = MaterialTheme.shapes.largeIncreased,
             placeholder = {
-                Text(stringResource(R.string.chat_input_placeholder))
+                Text(
+                    if (BuildConfig.BRAINYPAL_CHILD_MODE) {
+                        "说说你想问什么，或者哪一步卡住了"
+                    } else {
+                        stringResource(R.string.chat_input_placeholder)
+                    }
+                )
             },
             lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 5),
             keyboardOptions = KeyboardOptions(

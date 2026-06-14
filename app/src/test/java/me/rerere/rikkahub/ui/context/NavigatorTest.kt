@@ -2,7 +2,7 @@ package me.rerere.rikkahub.ui.context
 
 import androidx.navigation3.runtime.NavKey
 import me.rerere.rikkahub.Screen
-import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

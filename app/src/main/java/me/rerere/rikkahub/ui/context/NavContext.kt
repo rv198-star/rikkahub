@@ -3,7 +3,7 @@ package me.rerere.rikkahub.ui.context
 import androidx.compose.runtime.compositionLocalOf
 import androidx.navigation3.runtime.NavKey
 import me.rerere.rikkahub.Screen
-import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 
 class Navigator(
     private val backStack: MutableList<NavKey>,
