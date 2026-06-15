@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
@@ -1294,15 +1296,22 @@ private fun ParentWorkbenchOverviewCard(
                     }
                 }
             workbench?.let {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Button(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 50.dp),
                         onClick = onStructuredImport,
                     ) {
                         Text(BrainyPalTokens.parentPrimaryHeadline)
                     }
                     OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 50.dp),
                         onClick = onChat,
                     ) {
                         Text(BrainyPalTokens.parentSecondaryHeadline)
@@ -1485,22 +1494,33 @@ private fun ParentSectionSwitcher(
         "status" to "状态",
         "strategy" to "策略",
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         sections.forEach { (id, label) ->
             val selected = id == activeSection
             if (selected) {
                 Button(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .width(86.dp)
+                        .heightIn(min = 42.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp),
                     onClick = { onSectionSelected(id) },
                 ) {
-                    Text(label)
+                    Text(label, maxLines = 1)
                 }
             } else {
                 OutlinedButton(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .width(86.dp)
+                        .heightIn(min = 42.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp),
                     onClick = { onSectionSelected(id) },
                 ) {
-                    Text(label)
+                    Text(label, maxLines = 1)
                 }
             }
         }
@@ -1716,16 +1736,23 @@ private fun ParentWebMaterialCandidateRow(
         material.previewText.takeIf { it.isNotBlank() }?.let {
             Text(it.take(140), style = MaterialTheme.typography.bodySmall)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             OutlinedButton(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 46.dp),
                 enabled = !busy,
                 onClick = { onConfirm(material) },
             ) {
                 Text("确认入库")
             }
             Button(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 46.dp),
                 enabled = !busy,
                 onClick = { onConfirmToDraftTask(material) },
             ) {
@@ -2299,39 +2326,50 @@ private fun ParentPendingTaskQueue(
                 )
                 Text(card.title, style = MaterialTheme.typography.bodyMedium)
                 Text(card.childVisibilityLabel, style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 44.dp),
                         enabled = !busy,
                         onClick = { onReviewPendingTask(task) },
                     ) {
                         Text("检查")
                     }
                     OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 44.dp),
                         enabled = !busy,
                         onClick = { onEditPendingTask(task) },
                     ) {
                         Text("编辑")
                     }
                     Button(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 44.dp),
                         enabled = !busy,
                         onClick = { onSendPendingTask(task) },
                     ) {
                         Text("确认下发")
                     }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 44.dp),
                         enabled = !busy,
                         onClick = { onArchivePendingTask(task) },
                     ) {
                         Text("归档")
                     }
                     TextButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 44.dp),
                         enabled = !busy,
                         onClick = { onDeletePendingTask(task) },
                     ) {
@@ -2361,16 +2399,23 @@ private fun ParentMaterialCandidateRow(
             text = material.previewText.take(120),
             style = MaterialTheme.typography.bodySmall,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             OutlinedButton(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 46.dp),
                 enabled = !busy,
                 onClick = onConfirm,
             ) {
                 Text("确认")
             }
             Button(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 46.dp),
                 enabled = !busy,
                 onClick = onConfirmAndDispatch,
             ) {
@@ -2476,16 +2521,23 @@ private fun ParentWrongQuestionSupplyCard(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 FilledTonalButton(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 46.dp),
                     enabled = !busy,
                     onClick = onRefresh,
                 ) {
                     Text("刷新待复习")
                 }
                 OutlinedButton(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 46.dp),
                     enabled = !busy && reviews.isNotEmpty(),
                     onClick = { onCreateFromReviews(reviews) },
                 ) {
