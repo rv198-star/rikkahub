@@ -6,6 +6,7 @@ import kotlinx.coroutines.runBlocking
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildApi
 import me.rerere.rikkahub.brainypal.shared.BrainyPalAcceptPracticeTaskRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalAchievementStationResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildConnectionConfig
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskListResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskSummary
@@ -107,6 +108,10 @@ class BrainyPalHomeStateLoaderTest {
                 childMessage = "",
                 event = null,
             )
+        }
+
+        override suspend fun getAchievementStation(historyLimit: Int): BrainyPalAchievementStationResponse {
+            return BrainyPalAchievementStationResponse()
         }
 
         override suspend fun getPracticeTask(taskId: String): BrainyPalChildPracticeTaskDetail {

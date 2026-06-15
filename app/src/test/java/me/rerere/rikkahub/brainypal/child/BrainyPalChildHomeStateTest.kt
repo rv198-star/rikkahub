@@ -126,6 +126,10 @@ class BrainyPalChildHomeStateTest {
             return reviewOffer
         }
 
+        override suspend fun getAchievementStation(historyLimit: Int): BrainyPalAchievementStationResponse {
+            return BrainyPalAchievementStationResponse()
+        }
+
         override suspend fun getPracticeTask(taskId: String): BrainyPalChildPracticeTaskDetail {
             error("practice detail should not be loaded by home state")
         }
@@ -196,6 +200,10 @@ class BrainyPalChildHomeStateTest {
 
         override suspend fun getReviewOffer(remainingMinutes: Int?): BrainyPalReviewOfferResponse {
             error("review offer should not be loaded after cancellation")
+        }
+
+        override suspend fun getAchievementStation(historyLimit: Int): BrainyPalAchievementStationResponse {
+            error("achievement station should not be loaded after cancellation")
         }
 
         override suspend fun getPracticeTask(taskId: String): BrainyPalChildPracticeTaskDetail {

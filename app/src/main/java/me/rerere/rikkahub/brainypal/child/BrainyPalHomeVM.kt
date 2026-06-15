@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildApiFactory
 import me.rerere.rikkahub.brainypal.child.BrainyPalChildHomeState
+import me.rerere.rikkahub.brainypal.shared.BrainyPalAchievementStationResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskDetail
 import me.rerere.rikkahub.brainypal.shared.BrainyPalConfirmDictationOcrEvidenceRequest
@@ -59,6 +60,8 @@ class BrainyPalHomeVM(
     val state: StateFlow<UiState<BrainyPalChildHomeState>> = _state.asStateFlow()
     private val _practiceDetailState = MutableStateFlow(BrainyPalPracticeTaskDetailState())
     val practiceDetailState: StateFlow<BrainyPalPracticeTaskDetailState> = _practiceDetailState.asStateFlow()
+    private val _stationState = MutableStateFlow<UiState<BrainyPalAchievementStationResponse>>(UiState.Idle)
+    val stationState: StateFlow<UiState<BrainyPalAchievementStationResponse>> = _stationState.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -86,6 +89,22 @@ class BrainyPalHomeVM(
                     chatScreen = chatScreen,
                 )
             )
+        }
+    }
+
+    fun refreshStation(historyLimit: Int = 20) {
+        viewModelScope.launch {
+            _stationState.value = UiState.Loading
+            runCatching {
+                practiceApi().getAchievementStation(historyLimit = historyLimit)
+            }.onSuccess { station ->
+                _stationState.value = UiState.Success(station)
+            }.onFailure { error ->
+                if (error is CancellationException) {
+                    throw error
+                }
+                _stationState.value = UiState.Error(error)
+            }
         }
     }
 

@@ -96,6 +96,7 @@ class BrainyPalChildModePolicy private constructor(
             Screen.BrainyPalHome,
             Screen.Setting,
             Screen.BrainyPalPractice,
+            Screen.BrainyPalStation,
             Screen.BrainyPalConnection,
             Screen.SettingAbout,
             Screen.SettingTheme,

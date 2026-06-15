@@ -125,6 +125,32 @@ private fun BrainyPalHomeContent(
             }
 
             item {
+                CardGroup(
+                    title = { Text("长期养成") },
+                ) {
+                    item(
+                        leadingContent = {
+                            Icon(
+                                imageVector = HugeIcons.Sparkles,
+                                contentDescription = null,
+                                tint = BrainyPalChildTheme.amberText,
+                            )
+                        },
+                        headlineContent = { Text("勇气空间站") },
+                        supportingContent = { Text("看看今天的稳定信号、技能天梯和最近记录") },
+                        trailingContent = {
+                            Text(
+                                text = "进入",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        },
+                        onClick = { onNavigate(Screen.BrainyPalStation) },
+                    )
+                }
+            }
+
+            item {
                 PrimaryActionStack(
                     primaryLabel = state.workbench.chatAction.label,
                     secondaryLabel = state.workbench.practiceAction.label,

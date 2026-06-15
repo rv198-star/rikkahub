@@ -119,6 +119,76 @@ class BrainyPalChildApiTest {
     }
 
     @Test
+    fun `achievement station decodes long term child visible contract`() {
+        val body = """
+            {
+              "child_id": "default",
+              "title": "勇气空间站",
+              "subtitle": "这里记录愿意开始、说出卡点、提示后再试和完成订正的小信号。",
+              "daily": {
+                "day": "2026-06-15",
+                "status": "stable",
+                "visible_acknowledgements": 2,
+                "headline": "今天收到 2 次稳定信号",
+                "body": "空间站已经记录了你愿意继续的一小步。"
+              },
+              "modules": [
+                {
+                  "module_id": "bravery_core",
+                  "label": "勇气核心",
+                  "status": "stable",
+                  "visible_count": 1,
+                  "current_rung": {
+                    "rung_id": "bravery_core.first_visible_attempt",
+                    "label": "先试一步",
+                    "state": "completed"
+                  },
+                  "next_rung_hint": "下一步：完成一次维护收尾",
+                  "rungs": [
+                    {
+                      "rung_id": "bravery_core.first_visible_attempt",
+                      "label": "先试一步",
+                      "state": "completed"
+                    },
+                    {
+                      "rung_id": "bravery_core.closed_session",
+                      "label": "完成一次维护收尾",
+                      "state": "locked"
+                    }
+                  ],
+                  "animation_cue": "module_pulse"
+                }
+              ],
+              "history": [
+                {
+                  "event_id": "evt_retry",
+                  "title": "收到稳定信号",
+                  "body": "你用了提示后又试了一次。",
+                  "module_id": "repair",
+                  "status": "stable",
+                  "occurred_at": "2026-06-15T09:10:00+00:00",
+                  "source_label": "练习任务",
+                  "task_id": "task-1",
+                  "animation_cue": "repair_spark"
+                }
+              ],
+              "animation_cue": "stable_signal"
+            }
+        """.trimIndent()
+
+        val station = JsonInstant.decodeFromString<BrainyPalAchievementStationResponse>(body)
+
+        assertEquals("default", station.childId)
+        assertEquals("勇气空间站", station.title)
+        assertEquals("今天收到 2 次稳定信号", station.daily.headline)
+        assertEquals("bravery_core", station.modules.single().moduleId)
+        assertEquals("先试一步", station.modules.single().currentRung.label)
+        assertEquals("locked", station.modules.single().rungs.last().state)
+        assertEquals("evt_retry", station.history.single().eventId)
+        assertEquals("repair_spark", station.history.single().animationCue)
+    }
+
+    @Test
     fun `practice handoff code decodes web join fields`() {
         val body = """
             {

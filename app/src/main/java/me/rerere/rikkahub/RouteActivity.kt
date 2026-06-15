@@ -89,6 +89,7 @@ import me.rerere.rikkahub.ui.pages.backup.BackupPage
 import me.rerere.rikkahub.brainypal.parent.BrainyPalConnectionPage
 import me.rerere.rikkahub.brainypal.child.BrainyPalHomePage
 import me.rerere.rikkahub.brainypal.child.BrainyPalPracticePage
+import me.rerere.rikkahub.brainypal.child.BrainyPalStationPage
 import me.rerere.rikkahub.ui.pages.chat.ChatPage
 import me.rerere.rikkahub.ui.pages.debug.DebugPage
 import me.rerere.rikkahub.ui.pages.developer.DeveloperPage
@@ -348,6 +349,10 @@ class RouteActivity : ComponentActivity() {
                                 BrainyPalPracticePage()
                             }
 
+                            entry<Screen.BrainyPalStation> {
+                                BrainyPalStationPage()
+                            }
+
                             entry<Screen.BrainyPalConnection> {
                                 BrainyPalConnectionPage()
                             }
@@ -596,6 +601,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object BrainyPalPractice : Screen
+
+    @Serializable
+    data object BrainyPalStation : Screen
 
     @Serializable
     data object BrainyPalConnection : Screen

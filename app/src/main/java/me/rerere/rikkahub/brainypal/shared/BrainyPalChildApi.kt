@@ -72,6 +72,11 @@ interface BrainyPalChildApi {
     suspend fun getReviewOffer(
         @Query("remaining_minutes") remainingMinutes: Int? = null,
     ): BrainyPalReviewOfferResponse
+
+    @GET("/api/v1/child/achievement-habits/station")
+    suspend fun getAchievementStation(
+        @Query("history_limit") historyLimit: Int = 20,
+    ): BrainyPalAchievementStationResponse
 }
 
 @Serializable
@@ -558,6 +563,73 @@ data class BrainyPalBraveryStationModuleState(
     val latestEventAt: String? = null,
     @SerialName("rung_ids")
     val rungIds: List<String> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalAchievementStationResponse(
+    @SerialName("child_id")
+    val childId: String = "",
+    val title: String = "勇气空间站",
+    val subtitle: String = "",
+    val daily: BrainyPalAchievementStationDaily = BrainyPalAchievementStationDaily(),
+    val modules: List<BrainyPalAchievementStationModule> = emptyList(),
+    val history: List<BrainyPalAchievementStationHistoryItem> = emptyList(),
+    @SerialName("animation_cue")
+    val animationCue: String = "station_idle",
+)
+
+@Serializable
+data class BrainyPalAchievementStationDaily(
+    val day: String = "",
+    val status: String = "needs_maintenance",
+    @SerialName("visible_acknowledgements")
+    val visibleAcknowledgements: Int = 0,
+    val headline: String = "今天还在待机",
+    val body: String = "从一个很小的开始就可以。",
+)
+
+@Serializable
+data class BrainyPalAchievementStationModule(
+    @SerialName("module_id")
+    val moduleId: String = "",
+    val label: String = "",
+    val status: String = "needs_maintenance",
+    @SerialName("visible_count")
+    val visibleCount: Int = 0,
+    @SerialName("current_rung")
+    val currentRung: BrainyPalAchievementStationRung = BrainyPalAchievementStationRung(),
+    @SerialName("next_rung_hint")
+    val nextRungHint: String? = null,
+    val rungs: List<BrainyPalAchievementStationRung> = emptyList(),
+    @SerialName("animation_cue")
+    val animationCue: String = "module_idle",
+)
+
+@Serializable
+data class BrainyPalAchievementStationRung(
+    @SerialName("rung_id")
+    val rungId: String = "",
+    val label: String = "",
+    val state: String = "locked",
+)
+
+@Serializable
+data class BrainyPalAchievementStationHistoryItem(
+    @SerialName("event_id")
+    val eventId: String = "",
+    val title: String = "",
+    val body: String = "",
+    @SerialName("module_id")
+    val moduleId: String = "",
+    val status: String = "",
+    @SerialName("occurred_at")
+    val occurredAt: String = "",
+    @SerialName("source_label")
+    val sourceLabel: String = "",
+    @SerialName("task_id")
+    val taskId: String? = null,
+    @SerialName("animation_cue")
+    val animationCue: String = "signal_pulse",
 )
 
 @Serializable

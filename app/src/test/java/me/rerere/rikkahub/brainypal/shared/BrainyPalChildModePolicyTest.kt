@@ -65,6 +65,7 @@ class BrainyPalChildModePolicyTest {
         assertTrue(policy.isScreenAllowed(Screen.BrainyPalHome))
         assertTrue(policy.isScreenAllowed(Screen.Setting))
         assertTrue(policy.isScreenAllowed(Screen.BrainyPalPractice))
+        assertTrue(policy.isScreenAllowed(Screen.BrainyPalStation))
         assertTrue(policy.isScreenAllowed(Screen.BrainyPalConnection))
         assertTrue(policy.isScreenAllowed(Screen.SettingAbout))
         assertTrue(policy.isScreenAllowed(Screen.SettingPreferences))
