@@ -84,6 +84,7 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalCreateStrategyRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalCreateStrategyResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentAchievementWeeklySummaryResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentLearningRecordsSummaryResponse
@@ -179,6 +180,10 @@ fun BrainyPalConnectionPage(
     var parentChatTrigger by remember { mutableStateOf<BrainyPalParentChatTriggerResponse?>(null) }
     var photoScanSnapshot by remember { mutableStateOf<BrainyPalParentPhotoScanSnapshot?>(null) }
     var learningSummary by remember { mutableStateOf<BrainyPalParentLearningRecordsSummaryResponse?>(null) }
+    var achievementWeeklySummary by remember {
+        mutableStateOf<BrainyPalParentAchievementWeeklySummaryResponse?>(null)
+    }
+    var achievementWeeklySummaryError by remember { mutableStateOf(false) }
     var resultDetail by remember { mutableStateOf<BrainyPalParentPracticeTaskResultDetailResponse?>(null) }
     var strategyGoalText by remember { mutableStateOf("") }
     var createdStrategy by remember { mutableStateOf<BrainyPalCreateStrategyResponse?>(null) }
@@ -238,6 +243,18 @@ fun BrainyPalConnectionPage(
             } finally {
                 parentBusy = false
             }
+        }
+    }
+
+    suspend fun refreshAchievementWeeklySummary(api: BrainyPalParentApi) {
+        try {
+            achievementWeeklySummary = api.getAchievementWeeklySummary()
+            achievementWeeklySummaryError = false
+        } catch (error: Throwable) {
+            if (error is CancellationException) {
+                throw error
+            }
+            achievementWeeklySummaryError = true
         }
     }
 
@@ -470,6 +487,7 @@ fun BrainyPalConnectionPage(
                             runParentAction("已刷新父母工作台") { api ->
                                 val tasks = applyWorkbenchResponse(api.getTaskWorkbench())
                                 learningSummary = api.getLearningRecordsSummary(limit = 6)
+                                refreshAchievementWeeklySummary(api)
                                 strategies = api.listStrategies().items
                                 tasks
                             }
@@ -605,14 +623,23 @@ fun BrainyPalConnectionPage(
                                 busy = parentBusy,
                                 tasks = parentTasks,
                                 learningSummary = learningSummary,
+                                achievementWeeklySummary = achievementWeeklySummary,
+                                achievementWeeklySummaryError = achievementWeeklySummaryError,
                                 resultDetail = resultDetail,
                                 onRefresh = {
                                     runParentAction("已刷新任务状态") { api ->
                                         val tasks = api.listPracticeTasks().items
                                         learningSummary = api.getLearningRecordsSummary(limit = 6)
+                                        refreshAchievementWeeklySummary(api)
                                         updateWorkbench(tasks = tasks)
                                         tasks
                                     }
+                                },
+                                onPrefillStrategy = { text ->
+                                    strategyGoalText = text
+                                    activeParentSection = "strategy"
+                                    parentMessage = "已带入策略页，确认后才会生效"
+                                    scope.launch { listState.animateScrollToItem(3) }
                                 },
                                 onOpenResult = { task ->
                                     runParentAction("已加载复盘：${task.title}") { api ->
@@ -2599,8 +2626,11 @@ private fun ParentTaskStatusCard(
     busy: Boolean,
     tasks: List<BrainyPalChildPracticeTaskDetail>,
     learningSummary: BrainyPalParentLearningRecordsSummaryResponse?,
+    achievementWeeklySummary: BrainyPalParentAchievementWeeklySummaryResponse?,
+    achievementWeeklySummaryError: Boolean,
     resultDetail: BrainyPalParentPracticeTaskResultDetailResponse?,
     onRefresh: () -> Unit,
+    onPrefillStrategy: (String) -> Unit,
     onOpenResult: (BrainyPalChildPracticeTaskDetail) -> Unit,
     onPreviewOcr: (BrainyPalParentOcrEvidenceCard) -> Unit,
     onConfirmOcr: (taskId: String, itemId: String, confirmation: String, label: String) -> Unit,
@@ -2637,6 +2667,12 @@ private fun ParentTaskStatusCard(
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
+            BrainyPalParentWeeklySummaryCard(
+                card = BrainyPalParentWorkbenchUi.achievementWeeklySummaryCard(achievementWeeklySummary),
+                busy = busy,
+                error = achievementWeeklySummaryError,
+                onPrefillStrategy = onPrefillStrategy,
+            )
             learningSummary?.let { summary ->
                 BrainyPalParentWorkbenchUi.learningSummaryCards(summary).take(4).forEach { card ->
                     ParentInfoCard(card)

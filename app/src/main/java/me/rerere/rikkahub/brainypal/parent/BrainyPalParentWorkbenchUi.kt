@@ -8,6 +8,7 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentAchievementWeeklySummaryResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentLearningRecordsSummaryResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanSnapshot
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
@@ -124,6 +125,26 @@ data class BrainyPalParentInfoCard(
     val metadata: String? = null,
     val statusLabel: String = "",
     val actionLabels: List<String> = emptyList(),
+)
+
+data class BrainyPalParentAchievementTrendRow(
+    val categoryLabel: String,
+    val summary: String,
+    val statusLabel: String,
+    val countLabel: String,
+)
+
+data class BrainyPalParentAchievementWeeklySummaryCard(
+    val title: String,
+    val headline: String,
+    val body: String,
+    val privacyLabel: String,
+    val trendRows: List<BrainyPalParentAchievementTrendRow>,
+    val suggestedWording: List<String>,
+    val primaryActionLabel: String?,
+    val strategyActionLabel: String?,
+    val strategyCandidateText: String?,
+    val parentSafeText: String,
 )
 
 data class BrainyPalParentWorkbenchDensityGuard(
@@ -539,6 +560,79 @@ object BrainyPalParentWorkbenchUi {
         return listOf(overview) + latest
     }
 
+    fun parentAchievementCategoryLabel(moduleId: String): String {
+        return when (moduleId) {
+            "bravery_core" -> "开始意愿"
+            "repair" -> "订正收尾"
+            "communication" -> "口头表达"
+            "navigation" -> "卡点应对"
+            "modeling" -> "解题过程"
+            else -> "学习过程"
+        }
+    }
+
+    fun achievementWeeklySummaryCard(
+        summary: BrainyPalParentAchievementWeeklySummaryResponse?,
+    ): BrainyPalParentAchievementWeeklySummaryCard {
+        val periodLabel = summary?.periodLabel?.takeIf { it.isNotBlank() } ?: "最近 7 天"
+        val title = "$periodLabel · 温和周总结"
+        if (summary == null || summary.visibleAcknowledgements == 0 && summary.moduleSummaries.isEmpty()) {
+            val body = "还没有形成稳定趋势。先完成几次任务后，我会只汇总值得被看见的努力。"
+            return BrainyPalParentAchievementWeeklySummaryCard(
+                title = title,
+                headline = "还没有形成稳定趋势",
+                body = body,
+                privacyLabel = weeklySummaryPrivacyLabel,
+                trendRows = emptyList(),
+                suggestedWording = emptyList(),
+                primaryActionLabel = null,
+                strategyActionLabel = null,
+                strategyCandidateText = null,
+                parentSafeText = listOf(title, body).joinToString(" "),
+            )
+        }
+
+        val trends = summary.moduleSummaries.take(3).map { module ->
+            BrainyPalParentAchievementTrendRow(
+                categoryLabel = parentAchievementCategoryLabel(module.moduleId),
+                summary = sanitizeParentAchievementCopy(module.parentSummary).ifBlank {
+                    "最近有一点值得看见的努力。"
+                },
+                statusLabel = achievementStatusLabel(module.status),
+                countLabel = if (module.visibleCount > 0) "${module.visibleCount} 次" else "有趋势",
+            )
+        }
+        val suggestedWording = summary.parentSuggestedWording
+            .map { sanitizeParentAchievementCopy(it) }
+            .filter { it.isNotBlank() }
+            .take(3)
+        val strategyCandidate = summary.strategyNotes
+            .firstOrNull { it.isNotBlank() }
+            ?.let(::sanitizeParentAchievementCopy)
+            ?.takeIf { it.isNotBlank() }
+        val headline = "${summary.visibleAcknowledgements} 次值得看见的努力"
+        val body = trends.joinToString(" · ") { it.categoryLabel }.ifBlank {
+            "先看孩子最近愿意尝试的地方。"
+        }
+        return BrainyPalParentAchievementWeeklySummaryCard(
+            title = title,
+            headline = headline,
+            body = body,
+            privacyLabel = weeklySummaryPrivacyLabel,
+            trendRows = trends,
+            suggestedWording = suggestedWording,
+            primaryActionLabel = if (suggestedWording.isNotEmpty()) "查看建议话术" else null,
+            strategyActionLabel = if (strategyCandidate != null) "带入策略页确认" else null,
+            strategyCandidateText = strategyCandidate,
+            parentSafeText = (
+                listOf(title, headline, body) +
+                    trends.flatMap { listOf(it.categoryLabel, it.summary, it.statusLabel, it.countLabel) } +
+                    suggestedWording +
+                    listOfNotNull(strategyCandidate)
+                ).joinToString(" "),
+        )
+    }
+
     fun resultDetailCards(
         detail: BrainyPalParentPracticeTaskResultDetailResponse,
     ): List<BrainyPalParentInfoCard> {
@@ -644,6 +738,57 @@ object BrainyPalParentWorkbenchUi {
             "结果"
         }
     }
+
+    private const val weeklySummaryPrivacyLabel = "这里只看周级趋势，不展开每一步"
+
+    private fun achievementStatusLabel(status: String): String {
+        return when (status) {
+            "steady" -> "正在稳定"
+            "emerging" -> "正在形成"
+            "needs_support" -> "需要陪伴"
+            "attention" -> "需要轻提醒"
+            else -> "趋势"
+        }
+    }
+
+    private fun sanitizeParentAchievementCopy(copy: String): String {
+        return forbiddenParentAchievementCopyReplacements.entries.fold(copy) { value, (target, replacement) ->
+            value.replace(target, replacement, ignoreCase = true)
+        }.trim()
+    }
+
+    private val forbiddenParentAchievementCopyReplacements = linkedMapOf(
+        "勇气号空间站" to "学习空间",
+        "勇气核心" to "开始意愿",
+        "勇气号" to "学习空间",
+        "修复模块" to "订正收尾",
+        "沟通模块" to "口头表达",
+        "技能天梯" to "学习进展",
+        "点亮模块" to "形成进展",
+        "模块维修" to "继续练习",
+        "失败次数" to "需要支持的次数",
+        "逃避次数" to "需要支持的次数",
+        "不会次数" to "需要支持的次数",
+        "连续打卡" to "持续完成",
+        "streak" to "持续完成",
+        "原始记录" to "记录摘要",
+        "聊天记录" to "沟通摘要",
+        "时间戳" to "记录时间",
+        "信号" to "提示",
+        "轨道" to "节奏",
+        "空间站维护" to "学习整理",
+        "等级" to "进展",
+        "积分" to "进展",
+        "金币" to "进展",
+        "排行" to "进展",
+        "失败" to "没完成",
+        "放弃" to "先停下来",
+        "又不会" to "遇到难点",
+        "拖拉" to "启动较慢",
+        "偷懒" to "启动较慢",
+        "实时" to "阶段",
+        "监控" to "观察",
+    )
 
     private fun BrainyPalParentImportSession.riskSummary(): String {
         return if (riskFlags.isEmpty()) {

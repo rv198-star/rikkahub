@@ -126,6 +126,9 @@ interface BrainyPalParentApi {
         @Query("limit") limit: Int = 20,
     ): BrainyPalParentLearningRecordsSummaryResponse
 
+    @GET("/api/v1/parent/achievement-habits/weekly-summary")
+    suspend fun getAchievementWeeklySummary(): BrainyPalParentAchievementWeeklySummaryResponse
+
     @GET("/api/v1/parent/strategies")
     suspend fun listStrategies(): BrainyPalListStrategiesResponse
 
@@ -299,6 +302,34 @@ data class BrainyPalParentLearningRecordsSummaryResponse(
     val knowledgePoints: List<String> = emptyList(),
     @SerialName("latest_records")
     val latestRecords: List<BrainyPalParentLearningRecordSummaryView> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalParentAchievementModuleSummary(
+    @SerialName("module_id")
+    val moduleId: String = "",
+    val label: String = "",
+    val status: String = "",
+    @SerialName("visible_count")
+    val visibleCount: Int = 0,
+    @SerialName("parent_summary")
+    val parentSummary: String = "",
+)
+
+@Serializable
+data class BrainyPalParentAchievementWeeklySummaryResponse(
+    @SerialName("period_label")
+    val periodLabel: String = "",
+    @SerialName("visible_acknowledgements")
+    val visibleAcknowledgements: Int = 0,
+    @SerialName("module_summaries")
+    val moduleSummaries: List<BrainyPalParentAchievementModuleSummary> = emptyList(),
+    @SerialName("parent_suggested_wording")
+    val parentSuggestedWording: List<String> = emptyList(),
+    @SerialName("strategy_notes")
+    val strategyNotes: List<String> = emptyList(),
+    @SerialName("realtime_event_feed")
+    val realtimeEventFeed: List<String> = emptyList(),
 )
 
 @Serializable

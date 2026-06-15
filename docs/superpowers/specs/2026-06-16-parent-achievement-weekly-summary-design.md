@@ -22,7 +22,7 @@ Child side may use:
 Parent side should translate those signals into plain parenting language:
 
 - 开始意愿
-- 遇难反应
+- 卡点应对
 - 订正收尾
 - 口头表达 or 练习收尾 when oral tasks are involved
 
@@ -47,8 +47,8 @@ The workbench card is a compact weekly trend card:
 - title: `最近 7 天 · 温和周总结`
 - headline: `3 次值得看见的努力`
 - subtitle: `愿意开始 · 提示后又试 · 完成一次订正`
-- trend rows: `开始意愿`, `遇难反应`, `订正收尾`
-- privacy line: `这里只看趋势，不展示实时记录`
+- trend rows: `开始意愿`, `卡点应对`, `订正收尾`
+- privacy line: `这里只看周级趋势，不展开每一步`
 - primary action: `查看建议话术`
 
 The detail panel focuses on wording:
@@ -105,7 +105,7 @@ Required translation layer:
 - `bravery_core` -> `开始意愿`
 - `repair` -> `订正收尾`
 - `communication` -> `口头表达`
-- `navigation` -> `遇难反应`
+- `navigation` -> `卡点应对`
 - `modeling` -> `解题过程`
 - unknown -> `学习过程`
 
@@ -173,7 +173,7 @@ Parent copy must:
 
 The UI should explicitly state:
 
-`这里只看趋势，不展示实时记录`
+`这里只看周级趋势，不展开每一步`
 
 ## Privacy And Pressure Boundaries
 

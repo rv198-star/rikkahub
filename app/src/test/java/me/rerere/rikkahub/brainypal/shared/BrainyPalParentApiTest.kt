@@ -688,6 +688,55 @@ class BrainyPalParentApiTest {
     }
 
     @Test
+    fun `parent achievement weekly summary decodes parent-safe weekly contract`() {
+        val body = """
+            {
+              "period_label": "最近 7 天",
+              "visible_acknowledgements": 3,
+              "module_summaries": [
+                {
+                  "module_id": "bravery_core",
+                  "label": "勇气核心",
+                  "status": "steady",
+                  "visible_count": 2,
+                  "parent_summary": "愿意先开始，提示后能继续尝试。"
+                },
+                {
+                  "module_id": "repair",
+                  "label": "修复模块",
+                  "status": "needs_support",
+                  "visible_count": 1,
+                  "parent_summary": "订正时需要把范围缩小到一处。"
+                }
+              ],
+              "parent_suggested_wording": [
+                "我看到你今天有一题提示后又试了一次，这一步很重要。",
+                "我们先只看一个地方，不急着全部做完。"
+              ],
+              "strategy_notes": [
+                "本周遇到难题时，先肯定开始，再缩小到一处订正。"
+              ],
+              "realtime_event_feed": [
+                "2026-06-16T10:00:00+08:00 raw event should never be rendered"
+              ]
+            }
+        """.trimIndent()
+
+        val summary = JsonInstant.decodeFromString<BrainyPalParentAchievementWeeklySummaryResponse>(body)
+
+        assertEquals("最近 7 天", summary.periodLabel)
+        assertEquals(3, summary.visibleAcknowledgements)
+        assertEquals("bravery_core", summary.moduleSummaries.first().moduleId)
+        assertEquals("勇气核心", summary.moduleSummaries.first().label)
+        assertEquals("steady", summary.moduleSummaries.first().status)
+        assertEquals(2, summary.moduleSummaries.first().visibleCount)
+        assertEquals("愿意先开始，提示后能继续尝试。", summary.moduleSummaries.first().parentSummary)
+        assertEquals(2, summary.parentSuggestedWording.size)
+        assertEquals("本周遇到难题时，先肯定开始，再缩小到一处订正。", summary.strategyNotes.single())
+        assertEquals(1, summary.realtimeEventFeed.size)
+    }
+
+    @Test
     fun `parent strategy requests and responses keep draft confirmation contract`() {
         val request = BrainyPalCreateStrategyRequest(
             parentGoalText = "这周朗读多鼓励，提示慢一点，不直接说答案。",

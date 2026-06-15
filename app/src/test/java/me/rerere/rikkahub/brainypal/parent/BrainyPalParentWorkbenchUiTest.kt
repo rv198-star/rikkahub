@@ -10,6 +10,8 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionCandidate
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatStructuredAction
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentAchievementModuleSummary
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentAchievementWeeklySummaryResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanCandidate
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanSnapshot
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanVerification
@@ -394,6 +396,113 @@ class BrainyPalParentWorkbenchUiTest {
         assertEquals("数学 · 练习", cards[1].title)
         assertEquals("几何题对角平分线关系还不稳。", cards[1].body)
         assertEquals("角平分线", cards[1].metadata)
+    }
+
+    @Test
+    fun `achievement module ids map to parent-facing categories`() {
+        assertEquals("开始意愿", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("bravery_core"))
+        assertEquals("订正收尾", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("repair"))
+        assertEquals("口头表达", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("communication"))
+        assertEquals("卡点应对", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("navigation"))
+        assertEquals("解题过程", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("modeling"))
+        assertEquals("学习过程", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("unknown_module"))
+    }
+
+    @Test
+    fun `achievement weekly summary hides child achievement language and realtime feed`() {
+        val card = BrainyPalParentWorkbenchUi.achievementWeeklySummaryCard(
+            BrainyPalParentAchievementWeeklySummaryResponse(
+                periodLabel = "最近 7 天",
+                visibleAcknowledgements = 4,
+                moduleSummaries = listOf(
+                    BrainyPalParentAchievementModuleSummary(
+                        moduleId = "bravery_core",
+                        label = "勇气核心",
+                        status = "steady",
+                        visibleCount = 2,
+                        parentSummary = "勇气核心开始稳定，连续打卡 2 次。",
+                    ),
+                    BrainyPalParentAchievementModuleSummary(
+                        moduleId = "repair",
+                        label = "修复模块",
+                        status = "needs_support",
+                        visibleCount = 1,
+                        parentSummary = "修复模块需要提醒，不展示失败次数。",
+                    ),
+                    BrainyPalParentAchievementModuleSummary(
+                        moduleId = "navigation",
+                        label = "信号导航",
+                        status = "emerging",
+                        visibleCount = 1,
+                        parentSummary = "遇到难题时能接受一个小提示。",
+                    ),
+                    BrainyPalParentAchievementModuleSummary(
+                        moduleId = "communication",
+                        label = "沟通模块",
+                        status = "emerging",
+                        visibleCount = 1,
+                        parentSummary = "愿意说出一个卡点。",
+                    ),
+                ),
+                parentSuggestedWording = listOf(
+                    "我看到你提示后又试了一步，这一步很重要。",
+                    "我们先只看一个地方，不急着全部做完。",
+                    "你可以和我说哪里卡住了。",
+                    "第四条不应展示。",
+                ),
+                strategyNotes = listOf("本周先肯定开始，再缩小到一处订正。"),
+                realtimeEventFeed = listOf("2026-06-16T10:00:00+08:00 原始记录"),
+            )
+        )
+
+        assertEquals("最近 7 天 · 温和周总结", card.title)
+        assertEquals("4 次值得看见的努力", card.headline)
+        assertEquals("这里只看周级趋势，不展开每一步", card.privacyLabel)
+        assertEquals(listOf("开始意愿", "订正收尾", "卡点应对"), card.trendRows.map { it.categoryLabel })
+        assertEquals(3, card.suggestedWording.size)
+        assertEquals("带入策略页确认", card.strategyActionLabel)
+        assertTrue(card.strategyCandidateText?.contains("本周先肯定开始") == true)
+        val forbidden = listOf(
+            "勇气核心",
+            "勇气号空间站",
+            "勇气号",
+            "修复模块",
+            "沟通模块",
+            "技能天梯",
+            "信号",
+            "轨道",
+            "等级",
+            "积分",
+            "金币",
+            "排行",
+            "连续打卡",
+            "streak",
+            "失败",
+            "实时",
+            "监控",
+            "原始记录",
+            "时间戳",
+        )
+        forbidden.forEach { word ->
+            assertFalse("parent card leaked forbidden word: $word", card.parentSafeText.contains(word))
+        }
+    }
+
+    @Test
+    fun `achievement weekly summary empty state avoids strategy action`() {
+        val card = BrainyPalParentWorkbenchUi.achievementWeeklySummaryCard(
+            BrainyPalParentAchievementWeeklySummaryResponse(
+                periodLabel = "最近 7 天",
+            )
+        )
+
+        assertEquals("最近 7 天 · 温和周总结", card.title)
+        assertEquals("还没有形成稳定趋势", card.headline)
+        assertTrue(card.body.contains("先完成几次任务后"))
+        assertTrue(card.trendRows.isEmpty())
+        assertTrue(card.suggestedWording.isEmpty())
+        assertEquals(null, card.strategyActionLabel)
+        assertEquals(null, card.strategyCandidateText)
     }
 
     @Test
