@@ -213,6 +213,10 @@ data class BrainyPalChildPracticeTaskDetail(
     private val legacyItems: List<BrainyPalChildPracticeTaskItem> = emptyList(),
     val answers: Map<String, BrainyPalPracticeAttemptAnswer> = emptyMap(),
     val result: BrainyPalPracticeTaskResult? = null,
+    @SerialName("achievement_moment")
+    private val rawAchievementMoment: BrainyPalAchievementMoment? = null,
+    @SerialName("station_state")
+    private val rawStationState: BrainyPalBraveryStationState? = null,
     @SerialName("due_at")
     val dueAt: String? = null,
     @SerialName("submitted_at")
@@ -260,6 +264,12 @@ data class BrainyPalChildPracticeTaskDetail(
     val needsMoreEffort: Boolean
         get() = blankOrLowEffort
 
+    val achievementMoment: BrainyPalAchievementMoment?
+        get() = rawAchievementMoment ?: result?.achievementMoment
+
+    val stationState: BrainyPalBraveryStationState?
+        get() = rawStationState ?: result?.stationState
+
     val statusLabel: String
         get() = practiceTaskStatusLabel(status)
 
@@ -290,6 +300,8 @@ data class BrainyPalChildPracticeTaskDetail(
         agentPolicySnapshot: BrainyPalPracticeTaskAgentPolicySnapshot = BrainyPalPracticeTaskAgentPolicySnapshot(),
         answers: Map<String, BrainyPalPracticeAttemptAnswer> = emptyMap(),
         result: BrainyPalPracticeTaskResult? = null,
+        achievementMoment: BrainyPalAchievementMoment? = null,
+        stationState: BrainyPalBraveryStationState? = null,
     ) : this(
         rawTaskId = taskId,
         attemptSessionId = null,
@@ -310,6 +322,8 @@ data class BrainyPalChildPracticeTaskDetail(
         legacyItems = items,
         answers = answers,
         result = result,
+        rawAchievementMoment = achievementMoment,
+        rawStationState = stationState,
         dueAt = dueAt,
         submittedAt = submittedAt,
         completedAt = completedAt,
@@ -390,6 +404,10 @@ data class BrainyPalPracticeAttemptSessionResponse(
     @SerialName("oral_evidence_by_item")
     val oralEvidenceByItem: Map<String, BrainyPalPracticeOralEvidenceView> = emptyMap(),
     val result: BrainyPalPracticeTaskResult? = null,
+    @SerialName("achievement_moment")
+    val achievementMoment: BrainyPalAchievementMoment? = null,
+    @SerialName("station_state")
+    val stationState: BrainyPalBraveryStationState? = null,
 ) {
     fun toTaskDetail(): BrainyPalChildPracticeTaskDetail {
         return BrainyPalChildPracticeTaskDetail(
@@ -409,6 +427,8 @@ data class BrainyPalPracticeAttemptSessionResponse(
             parentSummary = result?.parentSummary,
             answers = answers,
             result = result,
+            rawAchievementMoment = achievementMoment,
+            rawStationState = stationState,
         )
     }
 }
@@ -491,8 +511,53 @@ data class BrainyPalPracticeTaskResult(
     val reviewBlocks: List<BrainyPalPracticeReviewBlock> = emptyList(),
     @SerialName("learning_record")
     val learningRecord: BrainyPalPracticeLearningRecord? = null,
+    @SerialName("achievement_moment")
+    val achievementMoment: BrainyPalAchievementMoment? = null,
+    @SerialName("station_state")
+    val stationState: BrainyPalBraveryStationState? = null,
     @SerialName("created_at")
     val createdAt: String = "",
+)
+
+@Serializable
+data class BrainyPalAchievementMoment(
+    val title: String = "",
+    val body: String = "",
+    @SerialName("module_id")
+    val moduleId: String = "",
+    val status: String = "",
+    val tags: List<String> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalBraveryStationState(
+    @SerialName("child_id")
+    val childId: String = "",
+    val daily: BrainyPalBraveryStationDailyState? = null,
+    val modules: Map<String, BrainyPalBraveryStationModuleState> = emptyMap(),
+)
+
+@Serializable
+data class BrainyPalBraveryStationDailyState(
+    val day: String = "",
+    @SerialName("visible_acknowledgements")
+    val visibleAcknowledgements: Int = 0,
+    @SerialName("event_type_counts")
+    val eventTypeCounts: Map<String, Int> = emptyMap(),
+    val status: String = "",
+)
+
+@Serializable
+data class BrainyPalBraveryStationModuleState(
+    @SerialName("module_id")
+    val moduleId: String = "",
+    val status: String = "",
+    @SerialName("visible_count")
+    val visibleCount: Int = 0,
+    @SerialName("latest_event_at")
+    val latestEventAt: String? = null,
+    @SerialName("rung_ids")
+    val rungIds: List<String> = emptyList(),
 )
 
 @Serializable

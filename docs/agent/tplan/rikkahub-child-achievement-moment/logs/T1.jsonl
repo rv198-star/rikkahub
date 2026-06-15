@@ -1,0 +1,8 @@
+{"step_id": "issue-created", "task_id": "T1", "summary": "创建 RikkaHub #32，明确 Android 孩子端接入 achievement_moment / station_state 的范围、验收与非目标。", "payload": {}, "id": "L1", "timestamp": "2026-06-15T10:09:15.797073+00:00"}
+{"step_id": "red-tests", "task_id": "T1", "summary": "按 TDD 添加成就反馈解析与展示 helper 测试，聚焦 Gradle 单测红灯，失败点为缺失 DTO/detail 字段/helper。", "payload": {}, "id": "L2", "timestamp": "2026-06-15T10:13:52.890973+00:00"}
+{"step_id": "focused-tests-green", "task_id": "T1", "summary": "补齐 DTO、toTaskDetail 透传、展示 helper 与详情页成就卡片后，聚焦单测通过。", "payload": {}, "id": "L3", "timestamp": "2026-06-15T10:16:56.608901+00:00"}
+{"step_id": "brainypal-tests-green", "task_id": "T1", "summary": "BrainyPal Android 相关单测通过，覆盖 child/shared/parent BrainyPal 包内既有链路。", "payload": {}, "id": "L4", "timestamp": "2026-06-15T10:17:29.082146+00:00"}
+{"step_id": "full-unit-tests-green", "task_id": "T1", "summary": "全量 app debug unit tests 通过，diff whitespace 检查通过。", "payload": {}, "id": "L5", "timestamp": "2026-06-15T10:17:54.134022+00:00"}
+{"step_id": "assemble-debug-green", "task_id": "T1", "summary": "Debug APK 构建通过，可以进入模拟器/真机 UI 点验。", "payload": {}, "id": "L6", "timestamp": "2026-06-15T10:18:35.469392+00:00"}
+{"step_id": "emulator-qa-green", "task_id": "T1", "summary": "Android 模拟器完成孩子端练习提交 smoke，页面显示勇气空间站成就反馈卡。", "payload": {}, "id": "L7", "timestamp": "2026-06-15T10:40:18.256108+00:00"}
+{"step_id": "client-achievement-ui-green", "task_id": "T1", "summary": "客户端 DTO、映射、Compose 卡片和回归测试均完成。", "payload": {}, "id": "L8", "timestamp": "2026-06-15T10:40:18.283320+00:00"}

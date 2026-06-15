@@ -788,6 +788,10 @@ private fun PracticeTaskDetailContent(
             PracticeActionStatusCard(actionStatus)
         }
 
+        BrainyPalPracticeAchievementFeedback.model(detail)?.let { model ->
+            PracticeAchievementMomentCard(model)
+        }
+
         if (!isOralTask) detail.items.forEachIndexed { index, item ->
             PracticeTaskQuestionCard(
                 taskId = detail.taskId,
@@ -1158,6 +1162,54 @@ private fun RecitationFlowCard(
                 Text(
                     text = "保存自评",
                     modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PracticeAchievementMomentCard(model: BrainyPalPracticeAchievementFeedbackModel) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = HugeIcons.ServerStack01,
+                    contentDescription = null,
+                    tint = BrainyPalChildTheme.cyanAccent,
+                )
+                Text(
+                    text = model.sectionTitle,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+            Text(
+                text = model.headline,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = model.body,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            model.statusLine?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.76f),
                 )
             }
         }

@@ -1,0 +1,50 @@
+{
+  "schema_version": "tplan.v0.1",
+  "mission": {
+    "id": "rikkahub-child-achievement-moment",
+    "title": "RikkaHub 孩子端勇气空间站成就反馈接入",
+    "objective": "在 Android 孩子端接入 BrainyPal achievement_moment / station_state，完成练习提交后的勇气空间站反馈展示，并用单测、Gradle 与模拟器验收。",
+    "status": "active",
+    "human_in_loop": 0,
+    "risk_tolerance": 50,
+    "resource_sufficiency": 50,
+    "acceptance_evidence": [
+      {
+        "id": "E1",
+        "description": "RikkaHub issue 已创建或本地记录，包含背景、范围、验收和测试证据要求"
+      },
+      {
+        "id": "E2",
+        "description": "客户端模型能解析 achievement_moment / station_state，未知字段兼容不退化"
+      },
+      {
+        "id": "E3",
+        "description": "孩子练习提交后显示勇气空间站 moment，不影响今日任务/提示/提交/结果复盘"
+      },
+      {
+        "id": "E4",
+        "description": "相关 JVM 单测、Gradle 构建和可行的模拟器/真机验收通过，或明确环境阻塞"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "parent_id": null,
+      "kind": "task",
+      "level": 1,
+      "title": "Android 孩子端成就反馈实现与验收",
+      "status": "completed",
+      "role": "success-critical",
+      "evidence_links": [],
+      "mission_contribution": "完成 RikkaHub 孩子端勇气空间站反馈接入、测试和验收记录",
+      "acceptance_evidence": [
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ]
+    }
+  ],
+  "active_task_id": null
+}

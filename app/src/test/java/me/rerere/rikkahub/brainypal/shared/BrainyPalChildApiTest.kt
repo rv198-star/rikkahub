@@ -307,6 +307,79 @@ class BrainyPalChildApiTest {
     }
 
     @Test
+    fun `practice task detail decodes bravery station achievement feedback`() {
+        val body = """
+            {
+              "task_id": "task-equations",
+              "attempt_session_id": "attempt_123",
+              "status": "submitted",
+              "channel": "app",
+              "help_budget": 2,
+              "help_used": 1,
+              "remaining_help": 1,
+              "total_items": 2,
+              "answered_items": 2,
+              "submit_available": false,
+              "task": {
+                "task_id": "task-equations",
+                "title": "一元一次方程练习",
+                "subject": "数学",
+                "mode": "practice",
+                "instructions": "先独立完成",
+                "items": []
+              },
+              "answers": {},
+              "evidence_by_item": {},
+              "result": null,
+              "achievement_moment": {
+                "title": "收到稳定信号",
+                "body": "你今天把题目完成并提交了，勇气空间站记录了这一步。",
+                "module_id": "maintenance_loop",
+                "status": "stable",
+                "tags": ["daily", "attempt"]
+              },
+              "station_state": {
+                "child_id": "default-child",
+                "daily": {
+                  "day": "2026-06-15",
+                  "visible_acknowledgements": 1,
+                  "event_type_counts": {
+                    "first_step_attempted": 1,
+                    "maintenance_closed": 1
+                  },
+                  "status": "stable"
+                },
+                "modules": {
+                  "maintenance_loop": {
+                    "module_id": "maintenance_loop",
+                    "status": "stable",
+                    "visible_count": 1,
+                    "latest_event_at": "2026-06-15T09:00:00+08:00",
+                    "rung_ids": ["daily_first_submit"]
+                  }
+                }
+              },
+              "ignored_future_field": {
+                "safe_to_ignore": true
+              }
+            }
+        """.trimIndent()
+
+        val task = JsonInstant.decodeFromString<BrainyPalChildPracticeTaskDetail>(body)
+
+        assertEquals("收到稳定信号", task.achievementMoment?.title)
+        assertEquals("maintenance_loop", task.achievementMoment?.moduleId)
+        assertEquals("stable", task.achievementMoment?.status)
+        assertEquals(listOf("daily", "attempt"), task.achievementMoment?.tags)
+        assertEquals("default-child", task.stationState?.childId)
+        assertEquals("stable", task.stationState?.daily?.status)
+        assertEquals(1, task.stationState?.daily?.visibleAcknowledgements)
+        assertEquals(1, task.stationState?.daily?.eventTypeCounts?.get("maintenance_closed"))
+        assertEquals("stable", task.stationState?.modules?.get("maintenance_loop")?.status)
+        assertEquals(listOf("daily_first_submit"), task.stationState?.modules?.get("maintenance_loop")?.rungIds)
+    }
+
+    @Test
     fun `practice task action requests include attempt session id for agent service`() {
         val answerJson = JsonInstant.encodeToString(
             BrainyPalRecordPracticeTaskAnswerRequest(
@@ -455,6 +528,60 @@ class BrainyPalChildApiTest {
         assertEquals("recitation", response.result?.learningRecord?.recordType)
         assertEquals("attempt_recitation", response.toTaskDetail().attemptSessionId)
         assertTrue(response.toTaskDetail().result?.parentSummary.orEmpty().contains("重读 4 次"))
+    }
+
+    @Test
+    fun `oral submission response preserves bravery station feedback in task detail`() {
+        val body = """
+            {
+              "task_id": "recitation-task",
+              "attempt_session_id": "attempt_recitation",
+              "status": "submitted",
+              "channel": "app",
+              "help_budget": 1,
+              "help_used": 0,
+              "remaining_help": 1,
+              "total_items": 1,
+              "answered_items": 1,
+              "submit_available": false,
+              "task": {
+                "task_id": "recitation-task",
+                "title": "背诵《春晓》",
+                "subject": "语文",
+                "mode": "recitation",
+                "instructions": "先听再背",
+                "items": []
+              },
+              "answers": {},
+              "evidence_by_item": {},
+              "oral_evidence_by_item": {},
+              "result": null,
+              "achievement_moment": {
+                "title": "勇气模块点亮",
+                "body": "你完成了背诵复盘。",
+                "module_id": "recitation_bridge",
+                "status": "warming_up",
+                "tags": ["recitation"]
+              },
+              "station_state": {
+                "child_id": "default-child",
+                "daily": {
+                  "day": "2026-06-15",
+                  "visible_acknowledgements": 1,
+                  "event_type_counts": {},
+                  "status": "warming_up"
+                },
+                "modules": {}
+              }
+            }
+        """.trimIndent()
+
+        val response = JsonInstant.decodeFromString<BrainyPalPracticeAttemptSessionResponse>(body)
+        val detail = response.toTaskDetail()
+
+        assertEquals("勇气模块点亮", detail.achievementMoment?.title)
+        assertEquals("recitation_bridge", detail.achievementMoment?.moduleId)
+        assertEquals("warming_up", detail.stationState?.daily?.status)
     }
 
     @Test
