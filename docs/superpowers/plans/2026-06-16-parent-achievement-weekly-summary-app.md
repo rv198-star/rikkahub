@@ -67,4 +67,4 @@
 - [x] Build or run `:app:assembleDebug` if code compiles need confirmation.
 - [x] Use browser/emulator where practical to visually inspect the parent workbench card and detail.
 - [x] Comment #31 with implementation evidence and remaining true-device gaps.
-- [ ] Commit and push the RikkaHub branch.
+- [x] Commit and push the RikkaHub branch.
