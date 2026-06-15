@@ -44,6 +44,7 @@ data class BrainyPalParentPendingTaskCard(
     val itemCountLabel: String,
     val childVisibilityLabel: String,
     val actionLabels: List<String>,
+    val visibleActionLabels: List<String>,
 )
 
 data class BrainyPalParentWorkloadGuardPrompt(
@@ -125,7 +126,26 @@ data class BrainyPalParentInfoCard(
     val actionLabels: List<String> = emptyList(),
 )
 
+data class BrainyPalParentWorkbenchDensityGuard(
+    val maxPrimaryEntries: Int,
+    val maxSecondaryEntries: Int,
+    val maxSummaryChips: Int,
+    val maxPendingTaskActions: Int,
+)
+
+data class BrainyPalParentSupplyEntryGroups(
+    val primary: List<BrainyPalParentSupplyEntry>,
+    val secondary: List<BrainyPalParentSupplyEntry>,
+)
+
 object BrainyPalParentWorkbenchUi {
+    val visualDensityGuard = BrainyPalParentWorkbenchDensityGuard(
+        maxPrimaryEntries = 5,
+        maxSecondaryEntries = 4,
+        maxSummaryChips = 4,
+        maxPendingTaskActions = 3,
+    )
+
     private val activeTaskStatuses = setOf(
         "pending",
         "assigned",
@@ -209,6 +229,18 @@ object BrainyPalParentWorkbenchUi {
         )
     }
 
+    fun supplyEntryGroups(configured: Boolean): BrainyPalParentSupplyEntryGroups {
+        val entries = supplyEntries(configured)
+        return BrainyPalParentSupplyEntryGroups(
+            primary = entries
+                .filter { it.structuredPrimary }
+                .take(visualDensityGuard.maxPrimaryEntries),
+            secondary = entries
+                .filterNot { it.structuredPrimary }
+                .take(visualDensityGuard.maxSecondaryEntries),
+        )
+    }
+
     fun summaryChips(
         draftMaterials: List<BrainyPalParentMaterial>,
         pendingTasks: List<BrainyPalParentPracticeTaskView> = emptyList(),
@@ -252,6 +284,9 @@ object BrainyPalParentWorkbenchUi {
                 itemCountLabel = "${task.totalItems} ${itemUnit(task.mode)}",
                 childVisibilityLabel = if (task.childVisible) "孩子已可见" else "孩子暂不可见",
                 actionLabels = listOf("检查", "编辑", "下发", "归档", "删除"),
+                visibleActionLabels = listOf("检查", "编辑", "下发").take(
+                    visualDensityGuard.maxPendingTaskActions,
+                ),
             )
         }
     }
@@ -265,7 +300,8 @@ object BrainyPalParentWorkbenchUi {
             taskTitle = task.title,
             title = "先确认孩子今天的负载",
             message = guard.message.ifBlank { "今天已经有较多待完成任务，确认后仍可下发。" },
-            loadSummary = "当前还有 ${guard.activeTasks} 个进行中任务，预计约 ${guard.estimatedMinutes} 分钟。",
+            loadSummary = "当前还有 ${guard.activeTasks} 个进行中任务，" +
+                "预计约 ${guard.estimatedMinutes} 分钟。",
             actionLabels = listOf("先放待发任务", "仍然下发"),
         )
     }

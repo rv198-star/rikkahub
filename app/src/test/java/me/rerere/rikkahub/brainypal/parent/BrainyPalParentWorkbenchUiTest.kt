@@ -34,7 +34,17 @@ class BrainyPalParentWorkbenchUiTest {
         val entries = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
 
         assertEquals(
-            listOf("练习题", "听写", "阅读导读", "背诵", "错题复练", "粘贴材料", "拍照扫描", "联网找材料", "简单说一下"),
+            listOf(
+                "练习题",
+                "听写",
+                "阅读导读",
+                "背诵",
+                "错题复练",
+                "粘贴材料",
+                "拍照扫描",
+                "联网找材料",
+                "简单说一下",
+            ),
             entries.map { it.label },
         )
         assertTrue(entries[0].structuredPrimary)
@@ -50,6 +60,27 @@ class BrainyPalParentWorkbenchUiTest {
         assertEquals("可用", entries.first { it.id == "photo_scan" }.statusLabel)
         assertTrue(entries.first { it.id == "web_search" }.enabled)
         assertTrue(entries.first { it.id == "chat_light" }.enabled)
+    }
+
+    @Test
+    fun `workbench visual density guard keeps primary scan compact`() {
+        val guard = BrainyPalParentWorkbenchUi.visualDensityGuard
+        val groups = BrainyPalParentWorkbenchUi.supplyEntryGroups(configured = true)
+
+        assertEquals(5, guard.maxPrimaryEntries)
+        assertEquals(4, guard.maxSecondaryEntries)
+        assertEquals(4, guard.maxSummaryChips)
+        assertEquals(3, guard.maxPendingTaskActions)
+        assertEquals(
+            listOf("练习题", "听写", "阅读导读", "背诵", "错题复练"),
+            groups.primary.map { it.label },
+        )
+        assertEquals(
+            listOf("粘贴材料", "拍照扫描", "联网找材料", "简单说一下"),
+            groups.secondary.map { it.label },
+        )
+        assertTrue(groups.primary.all { it.structuredPrimary })
+        assertTrue(groups.secondary.none { it.structuredPrimary })
     }
 
     @Test
@@ -95,6 +126,7 @@ class BrainyPalParentWorkbenchUiTest {
         assertEquals("待发任务", cards.single().statusLabel)
         assertEquals("2 题", cards.single().itemCountLabel)
         assertEquals(listOf("检查", "编辑", "下发", "归档", "删除"), cards.single().actionLabels)
+        assertEquals(listOf("检查", "编辑", "下发"), cards.single().visibleActionLabels)
         assertFalse(cards.single().statusLabel.contains("草稿"))
     }
 

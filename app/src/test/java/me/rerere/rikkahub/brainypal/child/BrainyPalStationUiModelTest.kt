@@ -71,7 +71,10 @@ class BrainyPalStationUiModelTest {
         assertEquals("repair", display.modules.single().moduleId)
         assertEquals(0.5f, display.modules.single().progress)
         assertEquals("提示后再试一次", display.modules.single().currentRungLabel)
+        assertEquals(BrainyPalStationVisualTone.REPAIR_AMBER, display.modules.single().visualTone)
+        assertEquals(BrainyPalStationPulse.SPARK, display.modules.single().motion.pulse)
         assertEquals("evt_retry", display.history.single().eventId)
+        assertEquals(BrainyPalStationVisualTone.REPAIR_AMBER, display.history.single().visualTone)
         assertFalse(display.childSafeText.contains("积分"))
         assertFalse(display.childSafeText.contains("金币"))
         assertFalse(display.childSafeText.contains("排行榜"))
@@ -91,5 +94,35 @@ class BrainyPalStationUiModelTest {
 
         assertEquals("先完成一次小任务，空间站就会留下可回看的记录。", display.historyEmptyText)
         assertEquals("station_idle", display.animationCue)
+        assertEquals(BrainyPalStationVisualTone.QUIET, display.motion.visualTone)
+        assertEquals(BrainyPalStationPulse.IDLE, display.motion.pulse)
+    }
+
+    @Test
+    fun `station animation cues map to stable visual motion semantics`() {
+        assertEquals(
+            BrainyPalStationMotion(
+                visualTone = BrainyPalStationVisualTone.REPAIR_AMBER,
+                pulse = BrainyPalStationPulse.SPARK,
+                durationMillis = 900,
+            ),
+            BrainyPalStationUiModel.motionForCue("repair_spark"),
+        )
+        assertEquals(
+            BrainyPalStationMotion(
+                visualTone = BrainyPalStationVisualTone.STEADY_CYAN,
+                pulse = BrainyPalStationPulse.SIGNAL,
+                durationMillis = 1200,
+            ),
+            BrainyPalStationUiModel.motionForCue("module_pulse"),
+        )
+        assertEquals(
+            BrainyPalStationMotion(
+                visualTone = BrainyPalStationVisualTone.QUIET,
+                pulse = BrainyPalStationPulse.IDLE,
+                durationMillis = 1600,
+            ),
+            BrainyPalStationUiModel.motionForCue("unknown_cue"),
+        )
     }
 }

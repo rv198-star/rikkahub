@@ -46,6 +46,38 @@ import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 
+data class BrainyPalHomeVisualSemantics(
+    val sectionOrder: List<String>,
+    val courageStationSectionId: String,
+    val todayTaskSectionId: String,
+    val heroTone: String,
+    val primaryActionTone: String,
+    val secondaryActionTone: String,
+    val maxPreviewTasks: Int,
+    val childSafeText: String,
+)
+
+object BrainyPalHomePageVisualSemantics {
+    val default = BrainyPalHomeVisualSemantics(
+        sectionOrder = listOf(
+            "companion",
+            "long_term_station",
+            "primary_actions",
+            "review_offer",
+            "today_tasks",
+            "parent_area",
+        ),
+        courageStationSectionId = "long_term_station",
+        todayTaskSectionId = "today_tasks",
+        heroTone = "warm_companion",
+        primaryActionTone = "calm_primary",
+        secondaryActionTone = "gentle_secondary",
+        maxPreviewTasks = 3,
+        childSafeText = "今天先从一个小问题开始。" +
+            "勇气空间站记录愿意开始、说出卡点和提示后再试的小信号。",
+    )
+}
+
 @Composable
 fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
     val navController = LocalNavController.current
@@ -111,10 +143,11 @@ private fun BrainyPalHomeContent(
     onRefresh: () -> Unit,
     onNavigate: (Screen) -> Unit,
 ) {
+    val visualSemantics = BrainyPalHomePageVisualSemantics.default
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = innerPadding + PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = innerPadding + PaddingValues(BrainyPalChildTheme.pagePadding),
+        verticalArrangement = Arrangement.spacedBy(BrainyPalChildTheme.sectionSpacing),
     ) {
         if (state != null) {
             item {
@@ -203,7 +236,7 @@ private fun BrainyPalHomeContent(
                         supportingContent = { Text("先写下自己的想法，需要时再用提示券。") },
                         onClick = { onNavigate(state.workbench.practiceAction.target) },
                     )
-                    state.practiceTasks.take(3).forEach { task ->
+                    state.practiceTasks.take(visualSemantics.maxPreviewTasks).forEach { task ->
                         practiceTaskSummaryItem(task = task, onClick = { onNavigate(Screen.BrainyPalPractice) })
                     }
                 }
@@ -268,7 +301,7 @@ private fun BrainyPalCompanionCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp),
+                .padding(BrainyPalChildTheme.heroPadding),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Icon(

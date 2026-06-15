@@ -120,8 +120,8 @@ private fun StationContent(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = innerPadding + PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = innerPadding + PaddingValues(BrainyPalChildTheme.pagePadding),
+        verticalArrangement = Arrangement.spacedBy(BrainyPalChildTheme.sectionSpacing),
     ) {
         item {
             StationHeroCard(display = display)
@@ -169,7 +169,7 @@ private fun StationHeroCard(display: BrainyPalStationDisplay) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp),
+                .padding(BrainyPalChildTheme.heroPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
@@ -182,7 +182,7 @@ private fun StationHeroCard(display: BrainyPalStationDisplay) {
                     contentDescription = null,
                     tint = BrainyPalChildTheme.cyanAccent,
                 )
-                StationSignalDot(active = display.animationCue != "station_idle")
+                StationSignalDot(motion = display.motion)
             }
             Text(
                 text = display.title,
@@ -192,7 +192,11 @@ private fun StationHeroCard(display: BrainyPalStationDisplay) {
                 text = display.subtitle,
                 style = MaterialTheme.typography.bodyMedium,
             )
-            HorizontalDivider(color = BrainyPalChildTheme.heroContent.copy(alpha = 0.16f))
+            HorizontalDivider(
+                color = BrainyPalChildTheme.heroContent.copy(
+                    alpha = BrainyPalChildTheme.signalContainerAlpha,
+                ),
+            )
             Text(
                 text = display.dailyHeadline,
                 style = MaterialTheme.typography.titleMedium,
@@ -206,13 +210,13 @@ private fun StationHeroCard(display: BrainyPalStationDisplay) {
 }
 
 @Composable
-private fun StationSignalDot(active: Boolean) {
+private fun StationSignalDot(motion: BrainyPalStationMotion) {
     val transition = rememberInfiniteTransition(label = "station_signal")
     val pulse by transition.animateFloat(
         initialValue = 0.86f,
-        targetValue = if (active) 1.16f else 0.94f,
+        targetValue = if (motion.pulse == BrainyPalStationPulse.IDLE) 0.94f else 1.16f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
+            animation = tween(motion.durationMillis, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "station_signal_scale",
@@ -221,7 +225,7 @@ private fun StationSignalDot(active: Boolean) {
         modifier = Modifier
             .size(34.dp)
             .clip(CircleShape)
-            .background(BrainyPalChildTheme.cyanAccent.copy(alpha = 0.16f)),
+            .background(stationToneColor(motion.visualTone).copy(alpha = BrainyPalChildTheme.signalContainerAlpha)),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -229,13 +233,7 @@ private fun StationSignalDot(active: Boolean) {
                 .size(12.dp)
                 .scale(pulse)
                 .clip(CircleShape)
-                .background(
-                    if (active) {
-                        BrainyPalChildTheme.cyanAccent
-                    } else {
-                        MaterialTheme.colorScheme.outline
-                    }
-                )
+                .background(stationToneColor(motion.visualTone))
         )
     }
 }
@@ -286,7 +284,7 @@ private fun SkillLadderModuleCard(module: BrainyPalStationModuleDisplay) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    ModuleSignal(cue = module.animationCue)
+                    ModuleSignal(motion = module.motion)
                     Text(
                         text = module.label,
                         style = MaterialTheme.typography.titleMedium,
@@ -301,11 +299,7 @@ private fun SkillLadderModuleCard(module: BrainyPalStationModuleDisplay) {
             StationProgressBar(
                 progress = animatedProgress,
                 modifier = Modifier.fillMaxWidth(),
-                color = if (module.animationCue == "repair_spark") {
-                    BrainyPalChildTheme.amberAccent
-                } else {
-                    BrainyPalChildTheme.cyanAccent
-                },
+                color = stationToneColor(module.visualTone),
             )
             Text(
                 text = "当前：${module.currentRungLabel}",
@@ -352,14 +346,8 @@ private fun StationProgressBar(
 }
 
 @Composable
-private fun ModuleSignal(cue: String) {
-    val color = when (cue) {
-        "repair_spark" -> BrainyPalChildTheme.amberAccent
-        "navigation_ping",
-        "signal_wave",
-        "module_pulse" -> BrainyPalChildTheme.cyanAccent
-        else -> MaterialTheme.colorScheme.outline
-    }
+private fun ModuleSignal(motion: BrainyPalStationMotion) {
+    val color = stationToneColor(motion.visualTone)
     Box(
         modifier = Modifier
             .size(28.dp)
@@ -373,6 +361,15 @@ private fun ModuleSignal(cue: String) {
             tint = color,
             modifier = Modifier.size(16.dp),
         )
+    }
+}
+
+@Composable
+private fun stationToneColor(tone: BrainyPalStationVisualTone): androidx.compose.ui.graphics.Color {
+    return when (tone) {
+        BrainyPalStationVisualTone.REPAIR_AMBER -> BrainyPalChildTheme.amberAccent
+        BrainyPalStationVisualTone.STEADY_CYAN -> BrainyPalChildTheme.cyanAccent
+        BrainyPalStationVisualTone.QUIET -> MaterialTheme.colorScheme.outline
     }
 }
 
@@ -393,11 +390,7 @@ private fun StationHistoryCard(item: BrainyPalStationHistoryDisplay) {
             Icon(
                 imageVector = HugeIcons.Book03,
                 contentDescription = null,
-                tint = if (item.animationCue == "repair_spark") {
-                    BrainyPalChildTheme.amberAccent
-                } else {
-                    BrainyPalChildTheme.cyanAccent
-                },
+                tint = stationToneColor(item.visualTone),
             )
             Column(
                 modifier = Modifier.weight(1f),
