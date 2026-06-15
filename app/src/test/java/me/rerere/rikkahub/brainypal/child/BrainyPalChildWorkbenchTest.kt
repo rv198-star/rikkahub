@@ -49,7 +49,7 @@ class BrainyPalChildWorkbenchTest {
 
         assertTrue(workbench.configured)
         assertEquals("BrainyPal 已准备好", workbench.connectionStatus)
-        assertEquals("开始今日任务", workbench.practiceAction.label)
+        assertEquals("开始下一件事", workbench.practiceAction.label)
         assertEquals(Screen.BrainyPalPractice, workbench.practiceAction.target)
         assertEquals("1 个任务等你开始", workbench.practiceSummary)
     }
@@ -77,7 +77,7 @@ class BrainyPalChildWorkbenchTest {
         )
 
         assertEquals("1 个任务可以继续", workbench.practiceSummary)
-        assertEquals("继续今日任务", workbench.practiceAction.label)
+        assertEquals("继续下一件事", workbench.practiceAction.label)
     }
 
     @Test
@@ -102,7 +102,7 @@ class BrainyPalChildWorkbenchTest {
             chatScreen = Screen.Chat("chat-id"),
         )
 
-        assertEquals("开始今日任务", workbench.practiceAction.label)
+        assertEquals("开始下一件事", workbench.practiceAction.label)
         assertEquals("1 个任务等你开始", workbench.practiceSummary)
     }
 
@@ -118,8 +118,8 @@ class BrainyPalChildWorkbenchTest {
             helpUsed = 0,
         )
 
-        assertEquals("开始", BrainyPalChildWorkbench.taskActionLabel(task("assigned")))
-        assertEquals("继续", BrainyPalChildWorkbench.taskActionLabel(task("in_progress")))
+        assertEquals("先试一步", BrainyPalChildWorkbench.taskActionLabel(task("assigned")))
+        assertEquals("继续下一件事", BrainyPalChildWorkbench.taskActionLabel(task("in_progress")))
         assertEquals("看反馈", BrainyPalChildWorkbench.taskActionLabel(task("submitted")))
         assertEquals("看反馈", BrainyPalChildWorkbench.taskActionLabel(task("completed")))
         assertEquals("已结束", BrainyPalChildWorkbench.taskActionLabel(task("expired")))

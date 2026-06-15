@@ -10,10 +10,10 @@ class BrainyPalHomePageVisualSemanticsTest {
         val semantics = BrainyPalHomePageVisualSemantics.default
 
         assertEquals(
-            listOf("companion", "long_term_station", "primary_actions", "review_offer", "today_tasks", "parent_area"),
+            listOf("companion", "yongqi_station", "primary_actions", "review_offer", "today_tasks", "grownup_gate"),
             semantics.sectionOrder,
         )
-        assertEquals("long_term_station", semantics.courageStationSectionId)
+        assertEquals("yongqi_station", semantics.courageStationSectionId)
         assertEquals("today_tasks", semantics.todayTaskSectionId)
         assertEquals("warm_companion", semantics.heroTone)
     }

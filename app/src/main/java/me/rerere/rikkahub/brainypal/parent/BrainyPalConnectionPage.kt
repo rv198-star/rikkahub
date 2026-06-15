@@ -105,6 +105,9 @@ import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.pages.setting.SettingVM
 import me.rerere.rikkahub.brainypal.child.theme.BrainyPalChildTheme
+import me.rerere.rikkahub.brainypal.parent.theme.BrainyPalParentTheme
+import me.rerere.rikkahub.brainypal.shared.components.BrainyPalSignalMark
+import me.rerere.rikkahub.brainypal.shared.theme.BrainyPalTokens
 import me.rerere.rikkahub.utils.plus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -367,7 +370,7 @@ fun BrainyPalConnectionPage(
             LargeFlexibleTopAppBar(
                 title = { Text("父母工作台") },
                 navigationIcon = { BackButton() },
-                colors = BrainyPalChildTheme.topAppBarColors(),
+                colors = BrainyPalParentTheme.topAppBarColors(),
                 scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(),
             )
         },
@@ -436,7 +439,7 @@ fun BrainyPalConnectionPage(
                 }
             } else {
                 val configured = settings.brainyPalChildConnection.isConfigured()
-                val supplyEntries = BrainyPalParentWorkbenchUi.supplyEntries(configured)
+                val supplyEntryGroups = BrainyPalParentWorkbenchUi.supplyEntryGroups(configured)
                 val summaryChips = BrainyPalParentWorkbenchUi.summaryChips(
                     draftMaterials = draftMaterials,
                     pendingTasks = pendingTasks,
@@ -698,8 +701,8 @@ fun BrainyPalConnectionPage(
 
                     else -> {
                         item {
-                            ParentSupplyEntryList(
-                                entries = supplyEntries,
+                        ParentSupplyEntryList(
+                                groups = supplyEntryGroups,
                                 activeEntryId = activeSupplyEntryId,
                                 onEntrySelected = { activeSupplyEntryId = it },
                             )
@@ -881,7 +884,7 @@ fun BrainyPalConnectionPage(
                                 }
                             }
                         }
-                        if (activeSupplyEntryId !in setOf("photo_scan", "web_search", "chat_light")) item {
+                        if (activeSupplyEntryId !in setOf("photo_scan", "web_search", "chat_light", "wrong_questions")) item {
                             ParentMaterialImportCard(
                                 configured = configured,
                                 busy = parentBusy,
@@ -991,65 +994,39 @@ fun BrainyPalConnectionPage(
                                 },
                             )
                         }
-                item {
-                    ParentTaskSupplyCard(
-                        configured = configured,
-                        busy = parentBusy,
-                        message = parentMessage,
-                        dictationTitle = dictationTitle,
-                        dictationEntries = dictationEntries,
-                        onDictationTitleChange = { dictationTitle = it },
-                        onDictationEntriesChange = { dictationEntries = it },
-                        onCreateDictation = {
-                            val request = BrainyPalParentTaskComposer.dictationRequest(
-                                title = dictationTitle,
-                                rawEntries = dictationEntries,
-                                helpLimit = 3,
-                            )
-                            if (request == null) {
-                                parentMessage = "请先输入要听写的字词或句子"
-                                return@ParentTaskSupplyCard
+                        if (activeSupplyEntryId == "wrong_questions") {
+                            item {
+                                ParentWrongQuestionSupplyCard(
+                                    busy = parentBusy,
+                                    reviews = dueReviews,
+                                    title = wrongQuestionTitle,
+                                    onTitleChange = { wrongQuestionTitle = it },
+                                    onRefresh = {
+                                        runParentAction("已刷新待复习错题") { api ->
+                                            dueReviews = api.listDueWrongQuestionReviews(limit = 6).items
+                                            null
+                                        }
+                                    },
+                                    onCreateFromReviews = { reviews ->
+                                        val request = BrainyPalParentTaskComposer.wrongQuestionRequest(
+                                            reviews = reviews,
+                                            title = wrongQuestionTitle,
+                                            helpLimit = 3,
+                                        )
+                                        if (request == null) {
+                                            parentMessage = "暂无可生成的错题"
+                                            return@ParentWrongQuestionSupplyCard
+                                        }
+                                        runParentAction("已生成错题复练，孩子端刷新后可见") { api ->
+                                            val task = api.createPracticeTaskFromWrongQuestions(request)
+                                            val tasks = listOf(task) + parentTasks.filterNot { it.taskId == task.taskId }
+                                            updateWorkbench(tasks = tasks)
+                                            tasks
+                                        }
+                                    },
+                                )
                             }
-                            runParentAction("已下发听写任务，孩子端刷新后可见") { api ->
-                                val task = api.createDictationPracticeTask(request)
-                                val tasks = listOf(task) + parentTasks.filterNot { it.taskId == task.taskId }
-                                updateWorkbench(tasks = tasks)
-                                tasks
-                            }
-                        },
-                    )
-                }
-                item {
-                    ParentWrongQuestionSupplyCard(
-                        busy = parentBusy,
-                        reviews = dueReviews,
-                        title = wrongQuestionTitle,
-                        onTitleChange = { wrongQuestionTitle = it },
-                        onRefresh = {
-                            runParentAction("已刷新待复习错题") { api ->
-                                dueReviews = api.listDueWrongQuestionReviews(limit = 6).items
-                                null
-                            }
-                        },
-                        onCreateFromReviews = { reviews ->
-                            val request = BrainyPalParentTaskComposer.wrongQuestionRequest(
-                                reviews = reviews,
-                                title = wrongQuestionTitle,
-                                helpLimit = 3,
-                            )
-                            if (request == null) {
-                                parentMessage = "暂无可下发的错题"
-                                return@ParentWrongQuestionSupplyCard
-                            }
-                            runParentAction("已创建错题练习，孩子端刷新后可见") { api ->
-                                val task = api.createPracticeTaskFromWrongQuestions(request)
-                                val tasks = listOf(task) + parentTasks.filterNot { it.taskId == task.taskId }
-                                updateWorkbench(tasks = tasks)
-                                tasks
-                            }
-                        },
-                    )
-                }
+                        }
                     }
                 }
             }
@@ -1132,7 +1109,7 @@ private fun ParentWorkloadGuardDialog(
                 enabled = !busy,
                 onClick = onConfirmSend,
             ) {
-                Text("仍然下发")
+                Text("确认下发")
             }
         },
         dismissButton = {
@@ -1258,7 +1235,12 @@ private fun ParentWorkbenchOverviewCard(
     onStructuredImport: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    Card {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1269,51 +1251,61 @@ private fun ParentWorkbenchOverviewCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = HugeIcons.ServerStack01,
-                    contentDescription = null,
-                    tint = BrainyPalChildTheme.cyanAccent,
-                )
-                Text("父母工作台", style = MaterialTheme.typography.titleMedium)
+                BrainyPalSignalMark(size = 44.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("父母工作台", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        text = BrainyPalTokens.parentConfirmationPrinciple,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
-            Text("今天要给孩子准备什么？", style = MaterialTheme.typography.titleMedium)
+            Text("今天要给孩子准备什么？", style = MaterialTheme.typography.titleLarge)
             Text(
                 text = listOfNotNull(workbench?.materialSummary, workbench?.taskSummary)
                     .joinToString(" · ")
-                    .ifBlank { "刷新后查看待确认材料、OCR 证据和已下发任务" },
+                    .ifBlank { "刷新后查看待确认材料、OCR 证据和孩子已可见任务" },
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                summaryChips.forEach { chip ->
-                    Card(
-                        modifier = Modifier.weight(1f),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        ),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Text(chip.count.toString(), style = MaterialTheme.typography.titleMedium)
-                            Text(chip.label, style = MaterialTheme.typography.labelSmall)
+            summaryChips
+                .take(BrainyPalParentWorkbenchUi.visualDensityGuard.maxSummaryChips)
+                .chunked(2)
+                .forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { chip ->
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.64f),
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(chip.count.toString(), style = MaterialTheme.typography.titleMedium)
+                                    Text(chip.label, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                        if (row.size == 1) {
+                            Box(modifier = Modifier.weight(1f))
                         }
                     }
                 }
-            }
             workbench?.let {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         modifier = Modifier.weight(1f),
                         onClick = onStructuredImport,
                     ) {
-                        Text(it.primaryEntryLabel)
+                        Text(BrainyPalTokens.parentPrimaryHeadline)
                     }
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
                         onClick = onChat,
                     ) {
-                        Text(it.secondaryChatLabel)
+                        Text(BrainyPalTokens.parentSecondaryHeadline)
                     }
                 }
             }
@@ -1488,7 +1480,7 @@ private fun ParentSectionSwitcher(
     onSectionSelected: (String) -> Unit,
 ) {
     val sections = listOf(
-        "supply" to "供给",
+        "supply" to "准备",
         "review" to "待确认",
         "status" to "状态",
         "strategy" to "策略",
@@ -1517,7 +1509,7 @@ private fun ParentSectionSwitcher(
 
 @Composable
 private fun ParentSupplyEntryList(
-    entries: List<BrainyPalParentSupplyEntry>,
+    groups: BrainyPalParentSupplyEntryGroups,
     activeEntryId: String,
     onEntrySelected: (String) -> Unit,
 ) {
@@ -1528,30 +1520,78 @@ private fun ParentSupplyEntryList(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("导入与下发入口", style = MaterialTheme.typography.titleMedium)
-            entries.forEach { entry ->
-                val selected = entry.id == activeEntryId
-                OutlinedButton(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 56.dp),
+            Text("结构化入口", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "想好了就直接选任务类型；还没想清楚再用补充入口。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text("常用任务", style = MaterialTheme.typography.labelLarge)
+            groups.primary.forEach { entry ->
+                ParentSupplyEntryButton(
+                    entry = entry,
+                    selected = entry.id == activeEntryId,
                     onClick = { onEntrySelected(entry.id) },
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text(entry.label, style = MaterialTheme.typography.labelLarge)
-                        Text(entry.supportingText, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text(
-                        text = if (selected) "当前" else entry.statusLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (entry.enabled) BrainyPalChildTheme.cyanAccent else BrainyPalChildTheme.amberText,
-                    )
-                }
+                )
+            }
+            Text("补充入口", style = MaterialTheme.typography.labelLarge)
+            groups.secondary.forEach { entry ->
+                ParentSupplyEntryButton(
+                    entry = entry,
+                    selected = entry.id == activeEntryId,
+                    onClick = { onEntrySelected(entry.id) },
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun ParentSupplyEntryButton(
+    entry: BrainyPalParentSupplyEntry,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    if (selected) {
+        Button(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 54.dp),
+            enabled = entry.enabled,
+            onClick = onClick,
+        ) {
+            ParentSupplyEntryButtonText(entry = entry, selected = true)
+        }
+    } else {
+        OutlinedButton(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 54.dp),
+            enabled = entry.enabled,
+            onClick = onClick,
+        ) {
+            ParentSupplyEntryButtonText(entry = entry, selected = false)
+        }
+    }
+}
+
+@Composable
+private fun ParentSupplyEntryButtonText(
+    entry: BrainyPalParentSupplyEntry,
+    selected: Boolean,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = "${entry.label} · ${if (selected) "当前" else entry.statusLabel}",
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Text(
+            text = entry.supportingText,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -2279,7 +2319,7 @@ private fun ParentPendingTaskQueue(
                         enabled = !busy,
                         onClick = { onSendPendingTask(task) },
                     ) {
-                        Text("下发")
+                        Text("确认下发")
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2367,10 +2407,10 @@ private fun ParentTaskSupplyCard(
                     contentDescription = null,
                     tint = BrainyPalChildTheme.cyanAccent,
                 )
-                Text("下发今日听写", style = MaterialTheme.typography.titleMedium)
+                Text("准备今日听写", style = MaterialTheme.typography.titleMedium)
             }
             Text(
-                text = "输入字词、单词或短句，孩子端会按听写流程播放并隐藏答案。",
+                text = "输入字词、单词或短句，先生成给孩子的听写安排，确认后再让孩子看见。",
                 style = MaterialTheme.typography.bodyMedium,
             )
             OutlinedTextField(
@@ -2396,7 +2436,7 @@ private fun ParentTaskSupplyCard(
                 enabled = configured && !busy,
                 onClick = onCreateDictation,
             ) {
-                Text("下发听写任务")
+                Text("确认下发听写")
             }
         }
     }
@@ -2449,7 +2489,7 @@ private fun ParentWrongQuestionSupplyCard(
                     enabled = !busy && reviews.isNotEmpty(),
                     onClick = { onCreateFromReviews(reviews) },
                 ) {
-                    Text("全部下发")
+                    Text("全部生成复练")
                 }
             }
             if (reviews.isEmpty()) {
@@ -2497,7 +2537,7 @@ private fun ParentDueReviewRow(
             enabled = !busy,
             onClick = onCreate,
         ) {
-            Text("下发这题")
+            Text("生成这题复练")
         }
     }
 }

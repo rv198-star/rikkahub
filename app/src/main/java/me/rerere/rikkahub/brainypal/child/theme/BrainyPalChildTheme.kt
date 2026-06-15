@@ -4,20 +4,20 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import me.rerere.rikkahub.brainypal.shared.theme.BrainyPalTokens
 
 object BrainyPalChildTheme {
-    val orbitPaper = Color(0xFFF5F8FF)
-    val deepSpace = Color(0xFF07111F)
-    val orbitPrimary = Color(0xFF254EDB)
-    val signalCyan = Color(0xFF18B8C6)
-    val solarAmber = Color(0xFFF6B93B)
-    val reviewCoral = Color(0xFFE86F50)
-    val clearMint = Color(0xFF2ABFA3)
-    val orbitPanel = Color(0xFFEEF4FF)
-    val orbitText = Color(0xFF13213A)
-    val orbitMuted = Color(0xFF637089)
-    val orbitLine = Color(0xFFD7E2F0)
+    val orbitPaper = BrainyPalTokens.orbitPaper
+    val deepSpace = BrainyPalTokens.deepSpace
+    val orbitPrimary = BrainyPalTokens.orbitPrimary
+    val signalCyan = BrainyPalTokens.signalCyan
+    val solarAmber = BrainyPalTokens.solarAmber
+    val reviewCoral = BrainyPalTokens.reviewCoral
+    val clearMint = BrainyPalTokens.clearMint
+    val orbitPanel = BrainyPalTokens.orbitPanel
+    val orbitText = BrainyPalTokens.ink
+    val orbitMuted = BrainyPalTokens.mutedInk
+    val orbitLine = BrainyPalTokens.orbitLine
 
     val cyanAccent = signalCyan
     val amberAccent = solarAmber
@@ -27,10 +27,10 @@ object BrainyPalChildTheme {
     val signalContainer = Color(0xFFD7F7FB)
     val gentleFocusContainer = Color(0xFFFFE9B8)
 
-    val pagePadding = 16.dp
-    val sectionSpacing = 14.dp
-    val heroPadding = 18.dp
-    val signalContainerAlpha = 0.16f
+    val pagePadding = BrainyPalTokens.pagePadding
+    val sectionSpacing = BrainyPalTokens.sectionSpacing
+    val heroPadding = BrainyPalTokens.heroPadding
+    val signalContainerAlpha = BrainyPalTokens.signalContainerAlpha
 
     val lightColorScheme: ColorScheme = androidx.compose.material3.lightColorScheme(
         primary = orbitPrimary,

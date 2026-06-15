@@ -120,7 +120,7 @@ object BrainyPalChildTaskInteraction {
     ): BrainyPalChildTaskInteractionPlan {
         return BrainyPalChildTaskInteractionPlan(
             kindLabel = detail.taskKindLabel,
-            primaryActionLabel = if (detail.status == "in_progress") "继续任务" else "开始任务",
+            primaryActionLabel = if (detail.status == "in_progress") "继续下一件事" else "先试一步",
             brief = spec?.childBrief?.takeIf { it.isNotBlank() } ?: "先写下自己的想法，需要时再用提示券。",
             answerLabel = "你的答案",
             evidenceLabel = "你怎么想的，或哪一步卡住了",

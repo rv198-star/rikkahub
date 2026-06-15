@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -42,6 +43,8 @@ import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.brainypal.child.theme.BrainyPalChildTheme
+import me.rerere.rikkahub.brainypal.shared.components.BrainyPalSignalMark
+import me.rerere.rikkahub.brainypal.shared.theme.BrainyPalTokens
 import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
@@ -61,20 +64,20 @@ object BrainyPalHomePageVisualSemantics {
     val default = BrainyPalHomeVisualSemantics(
         sectionOrder = listOf(
             "companion",
-            "long_term_station",
+            "yongqi_station",
             "primary_actions",
             "review_offer",
             "today_tasks",
-            "parent_area",
+            "grownup_gate",
         ),
-        courageStationSectionId = "long_term_station",
+        courageStationSectionId = "yongqi_station",
         todayTaskSectionId = "today_tasks",
         heroTone = "warm_companion",
         primaryActionTone = "calm_primary",
         secondaryActionTone = "gentle_secondary",
         maxPreviewTasks = 3,
         childSafeText = "今天先从一个小问题开始。" +
-            "勇气空间站记录愿意开始、说出卡点和提示后再试的小信号。",
+            "${BrainyPalTokens.stationFullName}记录愿意开始、说出卡点和提示后再试的小信号。",
     )
 }
 
@@ -86,7 +89,7 @@ fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("BrainyPal") },
+                title = { Text(BrainyPalTokens.stationName) },
                 navigationIcon = { BackButton() },
                 actions = {
                     IconButton(onClick = vm::refresh) {
@@ -169,8 +172,8 @@ private fun BrainyPalHomeContent(
                                 tint = BrainyPalChildTheme.amberText,
                             )
                         },
-                        headlineContent = { Text("勇气空间站") },
-                        supportingContent = { Text("看看今天的稳定信号、技能天梯和最近记录") },
+                        headlineContent = { Text(BrainyPalTokens.stationFullName) },
+                        supportingContent = { Text("看看今天接收到的稳定信号、技能天梯和最近记录") },
                         trailingContent = {
                             Text(
                                 text = "进入",
@@ -243,11 +246,8 @@ private fun BrainyPalHomeContent(
             }
 
             item {
-                val connectionStatus = BrainyPalChildUiText.childConnectionStatus(
-                    state.connection
-                )
                 CardGroup(
-                    title = { Text("家长区域") },
+                    title = { Text("大人设置") },
                 ) {
                     item(
                         leadingContent = {
@@ -257,11 +257,19 @@ private fun BrainyPalHomeContent(
                                 tint = BrainyPalChildTheme.cyanAccent,
                             )
                         },
-                        headlineContent = { Text(connectionStatus.title) },
-                        supportingContent = { Text(connectionStatus.detail) },
+                        headlineContent = { Text("连接和作业下发") },
+                        supportingContent = {
+                            Text(
+                                if (state.connection.isConfigured()) {
+                                    "需要大人 PIN 才能进入工作台"
+                                } else {
+                                    "请大人先连接 BrainyPal 服务"
+                                }
+                            )
+                        },
                         trailingContent = {
                             Text(
-                                text = "管理",
+                                text = "进入",
                                 color = MaterialTheme.colorScheme.primary,
                                 style = MaterialTheme.typography.labelLarge,
                             )
@@ -309,15 +317,33 @@ private fun BrainyPalCompanionCard(
                 contentDescription = null,
                 tint = BrainyPalChildTheme.amberText,
             )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BrainyPalSignalMark(size = 52.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = if (configured) "${BrainyPalTokens.stationName}在线" else "等待大人连接",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = BrainyPalChildTheme.cyanAccent,
+                    )
+                    Text(
+                        text = "清华/MIT 大哥哥陪你拆下一小步",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Text(
-                text = if (configured) "今天先从一个小问题开始" else "请家长先完成连接",
+                text = if (configured) "今天先接收一个小信号" else "请大人先完成连接",
                 style = MaterialTheme.typography.titleLarge,
             )
             Text(
                 text = if (configured) {
-                    "我会先陪你想，再给提示，不急着直接给答案。$practiceSummary。"
+                    "我会先陪你想，再给提示，不急着直接给答案。${BrainyPalTokens.childTrustPrinciple} $practiceSummary。"
                 } else {
-                    "连接好以后，BrainyPal 会陪你聊天、复习和完成今日任务。"
+                    "连接好以后，${BrainyPalTokens.stationName}会陪你聊天、复习和完成今日任务。"
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )

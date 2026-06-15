@@ -53,6 +53,8 @@ import me.rerere.hugeicons.stroke.Refresh03
 import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.Sparkles
 import me.rerere.rikkahub.brainypal.child.theme.BrainyPalChildTheme
+import me.rerere.rikkahub.brainypal.shared.components.BrainyPalSignalMark
+import me.rerere.rikkahub.brainypal.shared.theme.BrainyPalTokens
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.plus
@@ -69,7 +71,7 @@ fun BrainyPalStationPage(vm: BrainyPalHomeVM = koinViewModel()) {
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("勇气空间站") },
+                title = { Text(BrainyPalTokens.stationFullName) },
                 navigationIcon = { BackButton() },
                 actions = {
                     IconButton(onClick = { vm.refreshStation() }) {
@@ -177,11 +179,7 @@ private fun StationHeroCard(display: BrainyPalStationDisplay) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = HugeIcons.ServerStack01,
-                    contentDescription = null,
-                    tint = BrainyPalChildTheme.cyanAccent,
-                )
+                BrainyPalSignalMark(size = 42.dp)
                 StationSignalDot(motion = display.motion)
             }
             Text(

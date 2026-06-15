@@ -89,4 +89,20 @@ class BrainyPalChildTaskInteractionTest {
         assertEquals(emptyList<Pair<String, String>>(), plan.quickActions)
         assertTrue(plan.usesDedicatedFlow)
     }
+
+    @Test
+    fun `practice plan uses low pressure next step labels`() {
+        val pending = BrainyPalChildPracticeTaskDetail(
+            taskId = "task-practice",
+            title = "几何练习",
+            taskType = "wrong_question_practice",
+            status = "assigned",
+            helpLimit = 3,
+            helpUsed = 0,
+        )
+        val inProgress = pending.copy(status = "in_progress")
+
+        assertEquals("先试一步", BrainyPalChildTaskInteraction.plan(pending).primaryActionLabel)
+        assertEquals("继续下一件事", BrainyPalChildTaskInteraction.plan(inProgress).primaryActionLabel)
+    }
 }

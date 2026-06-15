@@ -56,19 +56,19 @@ data class BrainyPalChildWorkbench(
 
         fun taskActionLabel(task: BrainyPalChildPracticeTaskSummary): String {
             return when (task.status) {
-                "in_progress" -> "继续"
+                "in_progress" -> "继续下一件事"
                 "submitted", "reviewing", "completed" -> "看反馈"
                 "expired" -> "已结束"
-                else -> "开始"
+                else -> "先试一步"
             }
         }
 
         private fun List<BrainyPalChildPracticeTaskSummary>.primaryPracticeActionLabel(): String {
             return when {
-                any { it.status == "in_progress" || it.needsMoreEffort } -> "继续今日任务"
-                any { it.status in startableTaskStatuses } -> "开始今日任务"
-                isNotEmpty() -> "查看今日任务"
-                else -> "看看今日任务"
+                any { it.status == "in_progress" || it.needsMoreEffort } -> "继续下一件事"
+                any { it.status in startableTaskStatuses } -> "开始下一件事"
+                isNotEmpty() -> "先试一下"
+                else -> "先试一步"
             }
         }
 

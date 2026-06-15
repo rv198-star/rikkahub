@@ -283,8 +283,8 @@ object BrainyPalParentWorkbenchUi {
                 kindLabel = task.kindLabel,
                 itemCountLabel = "${task.totalItems} ${itemUnit(task.mode)}",
                 childVisibilityLabel = if (task.childVisible) "孩子已可见" else "孩子暂不可见",
-                actionLabels = listOf("检查", "编辑", "下发", "归档", "删除"),
-                visibleActionLabels = listOf("检查", "编辑", "下发").take(
+                actionLabels = listOf("检查", "编辑", "确认下发", "归档", "删除"),
+                visibleActionLabels = listOf("检查", "编辑", "确认下发").take(
                     visualDensityGuard.maxPendingTaskActions,
                 ),
             )
@@ -302,7 +302,7 @@ object BrainyPalParentWorkbenchUi {
             message = guard.message.ifBlank { "今天已经有较多待完成任务，确认后仍可下发。" },
             loadSummary = "当前还有 ${guard.activeTasks} 个进行中任务，" +
                 "预计约 ${guard.estimatedMinutes} 分钟。",
-            actionLabels = listOf("先放待发任务", "仍然下发"),
+            actionLabels = listOf("先放待发任务", "确认下发"),
         )
     }
 

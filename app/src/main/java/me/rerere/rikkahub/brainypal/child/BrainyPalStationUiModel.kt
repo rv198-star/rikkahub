@@ -3,6 +3,7 @@ package me.rerere.rikkahub.brainypal.child
 import me.rerere.rikkahub.brainypal.shared.BrainyPalAchievementStationHistoryItem
 import me.rerere.rikkahub.brainypal.shared.BrainyPalAchievementStationModule
 import me.rerere.rikkahub.brainypal.shared.BrainyPalAchievementStationResponse
+import me.rerere.rikkahub.brainypal.shared.theme.BrainyPalTokens
 
 enum class BrainyPalStationVisualTone {
     STEADY_CYAN,
@@ -96,7 +97,7 @@ object BrainyPalStationUiModel {
         val moduleLabels = modules.associate { it.moduleId to it.label }
         val animationCue = response.animationCue.ifBlank { "station_idle" }
         return BrainyPalStationDisplay(
-            title = response.title.ifBlank { "勇气空间站" },
+            title = response.title.ifBlank { BrainyPalTokens.stationFullName },
             subtitle = response.subtitle.ifBlank {
                 "记录愿意开始、说出卡点和提示后再试的小信号。"
             },
