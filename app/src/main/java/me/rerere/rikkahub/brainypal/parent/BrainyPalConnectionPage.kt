@@ -46,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -171,6 +172,7 @@ fun BrainyPalConnectionPage(
     }
     var activeParentSection by remember { mutableStateOf("supply") }
     var activeSupplyEntryId by remember { mutableStateOf("practice_questions") }
+    var supplyDetailScrollRequest by remember { mutableStateOf(0) }
     var previewOcrCard by remember { mutableStateOf<BrainyPalParentOcrEvidenceCard?>(null) }
     var workloadGuardPrompt by remember { mutableStateOf<BrainyPalParentWorkloadGuardPrompt?>(null) }
     var pendingTaskReview by remember { mutableStateOf<BrainyPalChildPracticeTaskDetail?>(null) }
@@ -191,6 +193,12 @@ fun BrainyPalConnectionPage(
     var strategyGoalText by remember { mutableStateOf("") }
     var createdStrategy by remember { mutableStateOf<BrainyPalCreateStrategyResponse?>(null) }
     var strategies by remember { mutableStateOf<List<BrainyPalStrategyVersion>>(emptyList()) }
+
+    LaunchedEffect(supplyDetailScrollRequest, activeParentSection, activeSupplyEntryId) {
+        if (supplyDetailScrollRequest > 0 && activeParentSection == "supply") {
+            listState.scrollToItem(BrainyPalParentWorkbenchUi.SUPPLY_DETAIL_ITEM_INDEX)
+        }
+    }
 
     fun updateWorkbench(
         drafts: List<BrainyPalParentMaterial> = draftMaterials,
@@ -524,7 +532,11 @@ fun BrainyPalConnectionPage(
                         onStructuredImport = {
                             activeParentSection = "supply"
                             activeSupplyEntryId = "practice_questions"
-                            scope.launch { listState.animateScrollToItem(3) }
+                            scope.launch {
+                                listState.scrollToItem(
+                                    BrainyPalParentWorkbenchUi.SUPPLY_SELECTOR_ITEM_INDEX,
+                                )
+                            }
                         },
                         onOpenLatestImportBatch = {
                             latestImportBatchCard?.let { openImportBatchReview(it.reviewUrl) }
@@ -777,10 +789,24 @@ fun BrainyPalConnectionPage(
 
                     else -> {
                         item {
-                        ParentSupplyEntryList(
+                            ParentSupplyEntryList(
                                 groups = supplyEntryGroups,
                                 activeEntryId = activeSupplyEntryId,
-                                onEntrySelected = { activeSupplyEntryId = it },
+                                busy = parentBusy,
+                                message = parentMessage,
+                                onEntrySelected = { entryId ->
+                                    val entry = (supplyEntryGroups.primary + supplyEntryGroups.secondary)
+                                        .firstOrNull { it.id == entryId }
+                                    activeSupplyEntryId = entryId
+                                    entry?.let {
+                                        val feedback = BrainyPalParentWorkbenchUi
+                                            .supplyEntrySelectionFeedback(it)
+                                        parentMessage = feedback.message
+                                        if (feedback.shouldScrollToDetail) {
+                                            supplyDetailScrollRequest += 1
+                                        }
+                                    }
+                                },
                             )
                         }
                         when (activeSupplyEntryId) {
@@ -1645,6 +1671,8 @@ private fun ParentSectionSwitcher(
 private fun ParentSupplyEntryList(
     groups: BrainyPalParentSupplyEntryGroups,
     activeEntryId: String,
+    busy: Boolean,
+    message: String?,
     onEntrySelected: (String) -> Unit,
 ) {
     Card {
@@ -1660,6 +1688,7 @@ private fun ParentSupplyEntryList(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            ParentBusyMessage(busy = busy, message = message)
             Text("常用任务", style = MaterialTheme.typography.labelLarge)
             groups.primary.forEach { entry ->
                 ParentSupplyEntryButton(

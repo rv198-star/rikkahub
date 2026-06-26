@@ -172,7 +172,16 @@ data class BrainyPalParentSupplyEntryGroups(
     val secondary: List<BrainyPalParentSupplyEntry>,
 )
 
+data class BrainyPalParentSupplyEntrySelectionFeedback(
+    val detailAnchorId: String,
+    val message: String,
+    val shouldScrollToDetail: Boolean,
+)
+
 object BrainyPalParentWorkbenchUi {
+    const val SUPPLY_SELECTOR_ITEM_INDEX = 3
+    const val SUPPLY_DETAIL_ITEM_INDEX = 4
+
     val visualDensityGuard = BrainyPalParentWorkbenchDensityGuard(
         maxPrimaryEntries = 5,
         maxSecondaryEntries = 4,
@@ -272,6 +281,30 @@ object BrainyPalParentWorkbenchUi {
             secondary = entries
                 .filterNot { it.structuredPrimary }
                 .take(visualDensityGuard.maxSecondaryEntries),
+        )
+    }
+
+    fun supplyEntrySelectionFeedback(
+        entry: BrainyPalParentSupplyEntry,
+    ): BrainyPalParentSupplyEntrySelectionFeedback {
+        val detailAnchorId = when (entry.id) {
+            "photo_scan" -> "photo_scan"
+            "web_search" -> "web_search"
+            "chat_light" -> "chat_light"
+            "wrong_questions" -> "wrong_questions"
+            else -> "material_import"
+        }
+        val suffix = when (entry.id) {
+            "photo_scan" -> "操作区"
+            "web_search" -> "操作区"
+            "chat_light" -> "入口"
+            "wrong_questions" -> "操作区"
+            else -> "导入区"
+        }
+        return BrainyPalParentSupplyEntrySelectionFeedback(
+            detailAnchorId = detailAnchorId,
+            message = "已定位到${entry.label}$suffix",
+            shouldScrollToDetail = true,
         )
     }
 

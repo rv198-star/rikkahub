@@ -257,6 +257,34 @@ class BrainyPalParentWorkbenchUiTest {
     }
 
     @Test
+    fun `parent supply entry selection jumps to the actionable detail area`() {
+        val practice = BrainyPalParentWorkbenchUi.supplyEntrySelectionFeedback(
+            entry = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
+                .first { it.id == "practice_questions" },
+        )
+        val photo = BrainyPalParentWorkbenchUi.supplyEntrySelectionFeedback(
+            entry = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
+                .first { it.id == "photo_scan" },
+        )
+        val chat = BrainyPalParentWorkbenchUi.supplyEntrySelectionFeedback(
+            entry = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
+                .first { it.id == "chat_light" },
+        )
+
+        assertEquals(3, BrainyPalParentWorkbenchUi.SUPPLY_SELECTOR_ITEM_INDEX)
+        assertEquals(4, BrainyPalParentWorkbenchUi.SUPPLY_DETAIL_ITEM_INDEX)
+        assertEquals("material_import", practice.detailAnchorId)
+        assertEquals("已定位到练习题导入区", practice.message)
+        assertTrue(practice.shouldScrollToDetail)
+        assertEquals("photo_scan", photo.detailAnchorId)
+        assertEquals("已定位到拍照扫描操作区", photo.message)
+        assertTrue(photo.shouldScrollToDetail)
+        assertEquals("chat_light", chat.detailAnchorId)
+        assertEquals("已定位到简单说一下入口", chat.message)
+        assertTrue(chat.shouldScrollToDetail)
+    }
+
+    @Test
     fun `chat trigger card prefers import batch review over legacy session`() {
         val card = BrainyPalParentWorkbenchUi.chatTriggerCard(
             BrainyPalParentChatTriggerResponse(

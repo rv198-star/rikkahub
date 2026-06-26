@@ -154,7 +154,7 @@ class BrainyPalHomeVM(
         val attemptSessionId = currentPracticeAttemptSessionId()
         updatePracticeTask(
             taskId = taskId,
-            successMessage = "答案已保存",
+            successMessage = BrainyPalPracticeActionFeedback.SAVE_SUCCESS_MESSAGE,
             pendingMessage = BrainyPalPracticeActionFeedback.SAVE_PENDING_MESSAGE,
             savedAnswer = SavedPracticeAnswer(
                 itemId = itemId,

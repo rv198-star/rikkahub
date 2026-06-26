@@ -79,4 +79,13 @@ class BrainyPalPracticeActionFeedbackTest {
 
         assertNull(hint)
     }
+
+    @Test
+    fun `save answer tap clears input focus before network request`() {
+        val policy = BrainyPalPracticeActionFeedback.saveInteractionPolicy()
+
+        assertTrue(policy.clearInputFocusBeforeSave)
+        assertEquals(BrainyPalPracticeActionFeedback.SAVE_PENDING_MESSAGE, policy.pendingMessage)
+        assertEquals(BrainyPalPracticeActionFeedback.SAVE_SUCCESS_MESSAGE, policy.successMessage)
+    }
 }

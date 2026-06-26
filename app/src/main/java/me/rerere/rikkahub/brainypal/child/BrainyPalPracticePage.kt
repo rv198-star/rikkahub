@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -215,6 +216,14 @@ private fun BrainyPalPracticeContent(
 ) {
     val listState = rememberLazyListState()
     val selectedTaskId = practiceDetailState.selectedTaskId
+    val focusManager = LocalFocusManager.current
+    val saveInteractionPolicy = BrainyPalPracticeActionFeedback.saveInteractionPolicy()
+    val onSaveAnswerFromUi = { taskId: String, itemId: String, answer: String, evidence: String ->
+        if (saveInteractionPolicy.clearInputFocusBeforeSave) {
+            focusManager.clearFocus(force = true)
+        }
+        onSaveAnswer(taskId, itemId, answer, evidence)
+    }
 
     LaunchedEffect(selectedTaskId) {
         if (selectedTaskId != null && state?.workbench?.configured == true && state.practiceTasks.isNotEmpty()) {
@@ -307,7 +316,7 @@ private fun BrainyPalPracticeContent(
                     onClose = onCloseTask,
                     onNavigate = onNavigate,
                     onUpdateDraft = onUpdateDraft,
-                    onSaveAnswer = onSaveAnswer,
+                    onSaveAnswer = onSaveAnswerFromUi,
                     onRequestHelp = onRequestHelp,
                     onCreateHandoffCode = onCreateHandoffCode,
                     onSubmitTask = onSubmitTask,

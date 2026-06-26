@@ -1,12 +1,27 @@
 package me.rerere.rikkahub.brainypal.child
 
+data class BrainyPalPracticeSaveInteractionPolicy(
+    val clearInputFocusBeforeSave: Boolean,
+    val pendingMessage: String,
+    val successMessage: String,
+)
+
 object BrainyPalPracticeActionFeedback {
     const val HELP_PENDING_MESSAGE = "BrainyPal 正在想提示..."
     const val HELP_SUCCESS_MESSAGE = "提示已显示在题目下方"
     const val HELP_EMPTY_MESSAGE = "这次没有拿到新的提示，请稍后再试。"
     const val SAVE_PENDING_MESSAGE = "正在保存答案..."
+    const val SAVE_SUCCESS_MESSAGE = "答案已保存"
     const val SUBMIT_PENDING_MESSAGE = "正在提交练习..."
     private const val LOW_EFFORT_MESSAGE = "先写一个已知条件、尝试答案或卡住点，再提交。"
+
+    fun saveInteractionPolicy(): BrainyPalPracticeSaveInteractionPolicy {
+        return BrainyPalPracticeSaveInteractionPolicy(
+            clearInputFocusBeforeSave = true,
+            pendingMessage = SAVE_PENDING_MESSAGE,
+            successMessage = SAVE_SUCCESS_MESSAGE,
+        )
+    }
 
     fun pendingStatus(message: String): BrainyPalPracticeTaskActionStatus {
         return BrainyPalPracticeTaskActionStatus(message = message)
