@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import me.rerere.rikkahub.utils.JsonInstant
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -32,6 +33,39 @@ interface BrainyPalParentApi {
     suspend fun createChatTrigger(
         @Body request: BrainyPalParentChatTriggerRequest,
     ): BrainyPalParentChatTriggerResponse
+
+    @GET("/api/v1/parent/import-batches/latest")
+    suspend fun getLatestImportBatch(): BrainyPalImportBatch
+
+    @GET("/api/v1/parent/import-batches/{batch_id}")
+    suspend fun getImportBatch(
+        @Path("batch_id") batchId: String,
+    ): BrainyPalImportBatch
+
+    @POST("/api/v1/parent/import-batches/text")
+    suspend fun createTextImportBatch(
+        @Body request: BrainyPalCreateTextImportBatchRequest,
+    ): BrainyPalImportBatch
+
+    @Multipart
+    @POST("/api/v1/parent/import-batches/photo")
+    suspend fun createPhotoImportBatch(
+        @Part file: MultipartBody.Part,
+        @Part("title") title: RequestBody,
+        @Part("parent_intent") parentIntent: RequestBody,
+    ): BrainyPalImportBatch
+
+    @POST("/api/v1/parent/import-batches/{batch_id}/tasks")
+    suspend fun createTaskFromImportBatch(
+        @Path("batch_id") batchId: String,
+        @Body request: BrainyPalCreateTaskFromImportBatchRequest = BrainyPalCreateTaskFromImportBatchRequest(),
+    ): BrainyPalChildPracticeTaskDetail
+
+    @POST("/api/v1/parent/import-batches/{batch_id}/wrong-question-review-task")
+    suspend fun createWrongQuestionReviewTaskFromImportBatch(
+        @Path("batch_id") batchId: String,
+        @Body request: BrainyPalCreateTaskFromImportBatchRequest = BrainyPalCreateTaskFromImportBatchRequest(),
+    ): BrainyPalChildPracticeTaskDetail
 
     @Multipart
     @POST("/api/v1/parent/photo-scans")
@@ -498,6 +532,101 @@ data class BrainyPalCreateParentImportSessionRequest(
 )
 
 @Serializable
+data class BrainyPalCreateTextImportBatchRequest(
+    val title: String,
+    @SerialName("raw_text")
+    val rawText: String,
+    @SerialName("parent_intent")
+    val parentIntent: String = "unknown",
+    @SerialName("source_refs")
+    val sourceRefs: List<String> = emptyList(),
+)
+
+@Serializable
+data class BrainyPalCreateTaskFromImportBatchRequest(
+    @SerialName("candidate_ids")
+    val candidateIds: List<String>? = null,
+    @SerialName("task_type")
+    val taskType: String? = null,
+    val title: String? = null,
+    @SerialName("help_limit")
+    val helpLimit: Int? = null,
+    val activate: Boolean = false,
+)
+
+@Serializable
+data class BrainyPalImportBatch(
+    @SerialName("batch_id")
+    val batchId: String,
+    val title: String,
+    @SerialName("source_type")
+    val sourceType: String,
+    @SerialName("parent_intent")
+    val parentIntent: String = "unknown",
+    val status: String = "needs_confirmation",
+    @SerialName("source_refs")
+    val sourceRefs: List<String> = emptyList(),
+    val candidates: List<BrainyPalImportBatchCandidate> = emptyList(),
+    @SerialName("candidate_ids")
+    val candidateIds: List<String> = emptyList(),
+    @SerialName("summary_counts")
+    val summaryCounts: Map<String, Int> = emptyMap(),
+) {
+    val reviewPath: String
+        get() = "/parent/import-batches?batch_id=$batchId"
+
+    val summaryLabel: String
+        get() = "${summaryCounts["total"] ?: candidates.size} 个候选 · " +
+            "${summaryCounts["confirmed"] ?: 0} 个已确认"
+
+    val parentIntentLabel: String
+        get() = when (parentIntent) {
+            "record_wrong_questions" -> "错题导入"
+            "import_dictation" -> "听写导入"
+            "import_reading" -> "朗读背诵导入"
+            "import_practice" -> "练习导入"
+            "chat_import" -> "聊天导入"
+            else -> "材料导入"
+        }
+}
+
+@Serializable
+data class BrainyPalImportBatchCandidate(
+    @SerialName("candidate_id")
+    val candidateId: String,
+    @SerialName("page_index")
+    val pageIndex: Int = 1,
+    @SerialName("source_refs")
+    val sourceRefs: List<String> = emptyList(),
+    @SerialName("raw_text")
+    val rawText: String,
+    @SerialName("question_text")
+    val questionText: String? = null,
+    @SerialName("child_answer")
+    val childAnswer: String? = null,
+    @SerialName("candidate_type")
+    val candidateType: String,
+    @SerialName("recommended_destination")
+    val recommendedDestination: String,
+    @SerialName("parent_destination")
+    val parentDestination: String? = null,
+    val confidence: Float? = null,
+    val status: String = "candidate",
+) {
+    val destinationLabel: String
+        get() = when (parentDestination ?: recommendedDestination) {
+            "material_library" -> "材料库"
+            "wrong_question_bank" -> "错题库"
+            "review_queue" -> "待复查"
+            "ignored" -> "忽略"
+            else -> "待确认"
+        }
+
+    val confidenceLabel: String
+        get() = confidence?.let { "置信度 ${(it * 100).toInt()}%" } ?: "置信度待确认"
+}
+
+@Serializable
 data class BrainyPalParentWebMaterialSearchRequest(
     val query: String,
     val subject: String? = null,
@@ -575,6 +704,8 @@ data class BrainyPalParentChatTriggerResponse(
     val requiresConfirmation: Boolean,
     @SerialName("structured_action")
     val structuredAction: BrainyPalParentChatStructuredAction? = null,
+    @SerialName("import_batch")
+    val importBatch: BrainyPalImportBatchLink? = null,
     @SerialName("import_session")
     val importSession: BrainyPalParentImportSession? = null,
     @SerialName("status_summary")
@@ -582,6 +713,20 @@ data class BrainyPalParentChatTriggerResponse(
     @SerialName("strategy_candidate")
     val strategyCandidate: BrainyPalParentChatStrategyCandidate? = null,
     val message: String,
+)
+
+@Serializable
+data class BrainyPalImportBatchLink(
+    @SerialName("batch_id")
+    val batchId: String,
+    val title: String,
+    val status: String,
+    @SerialName("parent_intent")
+    val parentIntent: String = "unknown",
+    @SerialName("review_url")
+    val reviewUrl: String,
+    @SerialName("candidate_count")
+    val candidateCount: Int = 0,
 )
 
 @Serializable

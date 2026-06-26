@@ -1,10 +1,13 @@
 package me.rerere.rikkahub.brainypal.parent
 
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskDetail
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildConnectionConfig
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrBoundingBox
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrConfirmationAction
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrReview
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
+import me.rerere.rikkahub.brainypal.shared.BrainyPalImportBatch
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
@@ -68,6 +71,16 @@ data class BrainyPalParentImportConfirmationAction(
     val id: String,
     val label: String,
     val primary: Boolean,
+)
+
+data class BrainyPalParentImportBatchCard(
+    val batchId: String,
+    val title: String,
+    val body: String,
+    val reviewUrl: String,
+    val primaryActionLabel: String,
+    val requiresParentConfirmation: Boolean,
+    val canDirectSend: Boolean,
 )
 
 data class BrainyPalParentOcrEvidenceCard(
@@ -327,6 +340,28 @@ object BrainyPalParentWorkbenchUi {
         )
     }
 
+    fun importBatchIntentForSupplyEntry(entryId: String): String {
+        return when (entryId) {
+            "dictation" -> "import_dictation"
+            "reading", "recitation" -> "import_reading"
+            "wrong_questions", "photo_scan" -> "record_wrong_questions"
+            "chat_light" -> "chat_import"
+            else -> "import_practice"
+        }
+    }
+
+    fun importBatchReviewUrl(
+        connection: BrainyPalChildConnectionConfig,
+        reviewPathOrUrl: String,
+    ): String {
+        val target = reviewPathOrUrl.trim()
+        if (target.startsWith("http://") || target.startsWith("https://")) {
+            return target
+        }
+        val rootUrl = BrainyPalChildModePolicy.agentServiceRootUrl(connection).trimEnd('/')
+        return "$rootUrl/${target.trimStart('/')}"
+    }
+
     fun importConfirmationSections(
         session: BrainyPalParentImportSession,
     ): List<BrainyPalParentImportConfirmationSection> {
@@ -386,6 +421,21 @@ object BrainyPalParentWorkbenchUi {
                 label = "确认并立即下发",
                 primary = true,
             ),
+        )
+    }
+
+    fun importBatchCard(
+        batch: BrainyPalImportBatch,
+        connection: BrainyPalChildConnectionConfig,
+    ): BrainyPalParentImportBatchCard {
+        return BrainyPalParentImportBatchCard(
+            batchId = batch.batchId,
+            title = batch.title,
+            body = "${batch.parentIntentLabel} · ${batch.summaryLabel}",
+            reviewUrl = importBatchReviewUrl(connection, batch.reviewPath),
+            primaryActionLabel = "继续确认",
+            requiresParentConfirmation = true,
+            canDirectSend = false,
         )
     }
 
@@ -486,7 +536,9 @@ object BrainyPalParentWorkbenchUi {
         return when (response.intent) {
             "prepare_import" -> BrainyPalParentChatTriggerCard(
                 title = "导入确认候选",
-                body = response.importSession?.title ?: response.message,
+                body = response.importBatch?.title
+                    ?: response.importSession?.title
+                    ?: response.message,
                 primaryActionLabel = actionLabel,
                 requiresConfirmation = true,
                 canDirectSend = false,

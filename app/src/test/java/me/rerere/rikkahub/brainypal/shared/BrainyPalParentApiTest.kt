@@ -247,6 +247,60 @@ class BrainyPalParentApiTest {
     }
 
     @Test
+    fun `import batch contract preserves intent review link and candidates`() {
+        val requestJson = JsonInstant.encodeToString(
+            BrainyPalCreateTextImportBatchRequest(
+                title = "几何练习",
+                rawText = "1. 求∠AOB。",
+                parentIntent = "import_practice",
+            )
+        )
+        assertTrue(requestJson.contains("\"parent_intent\":\"import_practice\""))
+        assertTrue(requestJson.contains("\"raw_text\":\"1. 求∠AOB。\""))
+
+        val responseBody = """
+            {
+              "batch_id": "batch_1",
+              "title": "几何练习",
+              "source_type": "text",
+              "parent_intent": "import_practice",
+              "status": "needs_confirmation",
+              "source_refs": ["parent-intake://batch_1#raw"],
+              "candidate_ids": ["candidate_1"],
+              "summary_counts": {
+                "total": 1,
+                "confirmed": 0,
+                "material_library": 1,
+                "wrong_question_bank": 0,
+                "review_queue": 0
+              },
+              "candidates": [
+                {
+                  "candidate_id": "candidate_1",
+                  "page_index": 1,
+                  "source_refs": ["parent-intake://batch_1#candidate_1"],
+                  "raw_text": "求∠AOB。",
+                  "question_text": "求∠AOB。",
+                  "candidate_type": "practice_candidate",
+                  "recommended_destination": "material_library",
+                  "confidence": 0.9,
+                  "status": "candidate"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val batch = JsonInstant.decodeFromString<BrainyPalImportBatch>(responseBody)
+
+        assertEquals("batch_1", batch.batchId)
+        assertEquals("import_practice", batch.parentIntent)
+        assertEquals("/parent/import-batches?batch_id=batch_1", batch.reviewPath)
+        assertEquals("1 个候选 · 0 个已确认", batch.summaryLabel)
+        assertEquals("材料库", batch.candidates.single().destinationLabel)
+        assertEquals("置信度 90%", batch.candidates.single().confidenceLabel)
+    }
+
+    @Test
     fun `web material search decodes source uncertainty and confirmation contract`() {
         val requestJson = JsonInstant.encodeToString(
             BrainyPalParentWebMaterialSearchRequest(
@@ -332,37 +386,31 @@ class BrainyPalParentApiTest {
               "intent": "prepare_import",
               "requires_confirmation": true,
               "structured_action": {
-                "type": "import_session",
+                "type": "import_batch",
                 "label": "打开导入确认",
                 "requires_confirmation": true
               },
-              "import_session": {
-                "session_id": "import_chat_1",
-                "status": "needs_confirmation",
-                "entry_goal": "dictation",
-                "input_mode": "chat",
-                "default_use": "dictation_material",
+              "import_batch": {
+                "batch_id": "batch_chat_1",
                 "title": "聊天导入听写",
-                "subject": "语文",
-                "raw_text": "观察、勇敢",
-                "preview": {
-                  "task_type": "dictation",
-                  "child_mode": "app",
-                  "requires_ocr_return": true,
-                  "estimated_minutes": 6,
-                  "send_label": "保存为待发任务"
-                }
+                "status": "needs_confirmation",
+                "parent_intent": "import_dictation",
+                "review_url": "/parent/import-batches?batch_id=batch_chat_1",
+                "candidate_count": 2
               },
-              "message": "我先整理成确认方案，家长确认后才会成为待发任务。"
+              "message": "我先整理成导入批次，请打开确认页核对。"
             }
         """.trimIndent()
         val importTrigger = JsonInstant.decodeFromString<BrainyPalParentChatTriggerResponse>(importBody)
 
         assertEquals("prepare_import", importTrigger.intent)
         assertTrue(importTrigger.requiresConfirmation)
-        assertEquals("import_session", importTrigger.structuredAction?.type)
-        assertEquals("import_chat_1", importTrigger.importSession?.sessionId)
-        assertEquals("dictation", importTrigger.importSession?.preview?.taskType)
+        assertEquals("import_batch", importTrigger.structuredAction?.type)
+        assertEquals("batch_chat_1", importTrigger.importBatch?.batchId)
+        assertEquals("import_dictation", importTrigger.importBatch?.parentIntent)
+        assertEquals("/parent/import-batches?batch_id=batch_chat_1", importTrigger.importBatch?.reviewUrl)
+        assertEquals(2, importTrigger.importBatch?.candidateCount)
+        assertEquals(null, importTrigger.importSession)
 
         val strategyBody = """
             {

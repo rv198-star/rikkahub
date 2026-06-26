@@ -266,6 +266,19 @@ data class BrainyPalChildPracticeTaskDetail(
             }
         }
 
+    val sourceRefs: List<String>
+        get() = task?.sourceRefs ?: emptyList()
+
+    val isFromConfirmedImportBatch: Boolean
+        get() = sourceRefs.any { it.startsWith("import_batch://") }
+
+    val sourceLabel: String
+        get() = if (isFromConfirmedImportBatch) "导入确认任务" else "普通任务"
+
+    val hasUnconfirmedImportCandidateLeak: Boolean
+        get() = (sourceRefs + items.flatMap { it.sourceRefs })
+            .any { ref -> ref.contains("#unconfirmed", ignoreCase = true) }
+
     val needsMoreEffort: Boolean
         get() = blankOrLowEffort
 
@@ -346,6 +359,8 @@ data class BrainyPalChildPracticeTaskPayload(
     val subject: String? = null,
     val mode: String = "practice",
     val instructions: String = "",
+    @SerialName("source_refs")
+    val sourceRefs: List<String> = emptyList(),
     val items: List<BrainyPalChildPracticeTaskItem> = emptyList(),
 )
 

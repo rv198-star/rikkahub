@@ -5,9 +5,13 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskItem
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrBoundingBox
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrEvidence
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildConnectionConfig
+import me.rerere.rikkahub.brainypal.shared.BrainyPalImportBatch
+import me.rerere.rikkahub.brainypal.shared.BrainyPalImportBatchCandidate
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionCandidate
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
+import me.rerere.rikkahub.brainypal.shared.BrainyPalImportBatchLink
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatStructuredAction
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentAchievementModuleSummary
@@ -189,6 +193,95 @@ class BrainyPalParentWorkbenchUiTest {
         assertTrue(sections.first { it.id == "ai_judgement" }.expanded)
         assertFalse(sections.first { it.id == "candidate_content" }.expanded)
         assertFalse(sections.first { it.id == "send_settings" }.expanded)
+    }
+
+    @Test
+    fun `import batch card opens shared review and blocks direct child send`() {
+        val connection = BrainyPalChildConnectionConfig(
+            baseUrl = "http://192.168.5.80:8000/rikka/v1",
+            apiKey = "local",
+        )
+        val card = BrainyPalParentWorkbenchUi.importBatchCard(
+            batch = BrainyPalImportBatch(
+                batchId = "batch_1",
+                title = "拍照试卷",
+                sourceType = "photo",
+                parentIntent = "record_wrong_questions",
+                status = "needs_confirmation",
+                candidates = listOf(
+                    BrainyPalImportBatchCandidate(
+                        candidateId = "q1",
+                        pageIndex = 1,
+                        rawText = "3 + 4 = ?",
+                        questionText = "3 + 4 = ?",
+                        candidateType = "wrong_question_candidate",
+                        recommendedDestination = "wrong_question_bank",
+                        confidence = 0.88f,
+                    )
+                ),
+                summaryCounts = mapOf("total" to 1, "confirmed" to 0),
+            ),
+            connection = connection,
+        )
+
+        assertEquals("拍照试卷", card.title)
+        assertEquals("错题导入 · 1 个候选 · 0 个已确认", card.body)
+        assertEquals("继续确认", card.primaryActionLabel)
+        assertEquals("http://192.168.5.80:8000/parent/import-batches?batch_id=batch_1", card.reviewUrl)
+        assertFalse(card.canDirectSend)
+        assertTrue(card.requiresParentConfirmation)
+        assertEquals(
+            "http://192.168.5.80:8000/parent/import-batches?batch_id=batch_1",
+            BrainyPalParentWorkbenchUi.importBatchReviewUrl(
+                connection = connection,
+                reviewPathOrUrl = "/parent/import-batches?batch_id=batch_1",
+            ),
+        )
+        assertEquals(
+            "https://brainypal.example/parent/import-batches?batch_id=batch_1",
+            BrainyPalParentWorkbenchUi.importBatchReviewUrl(
+                connection = connection,
+                reviewPathOrUrl = "https://brainypal.example/parent/import-batches?batch_id=batch_1",
+            ),
+        )
+    }
+
+    @Test
+    fun `parent supply entries map to import batch intents`() {
+        assertEquals("import_practice", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("practice_questions"))
+        assertEquals("import_dictation", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("dictation"))
+        assertEquals("import_reading", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("reading"))
+        assertEquals("import_reading", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("recitation"))
+        assertEquals("record_wrong_questions", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("wrong_questions"))
+        assertEquals("chat_import", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("chat_light"))
+    }
+
+    @Test
+    fun `chat trigger card prefers import batch review over legacy session`() {
+        val card = BrainyPalParentWorkbenchUi.chatTriggerCard(
+            BrainyPalParentChatTriggerResponse(
+                intent = "prepare_import",
+                requiresConfirmation = true,
+                structuredAction = BrainyPalParentChatStructuredAction(
+                    type = "import_batch",
+                    label = "打开确认页",
+                    requiresConfirmation = true,
+                ),
+                importBatch = BrainyPalImportBatchLink(
+                    batchId = "batch_1",
+                    title = "聊天导入几何题",
+                    status = "needs_confirmation",
+                    parentIntent = "import_practice",
+                    reviewUrl = "/parent/import-batches?batch_id=batch_1",
+                    candidateCount = 2,
+                ),
+                importSession = importSession(title = "旧确认方案"),
+                message = "我先整理成导入批次，请打开确认页核对。",
+            )
+        )
+
+        assertEquals("聊天导入几何题", card.body)
+        assertEquals("打开确认页", card.primaryActionLabel)
     }
 
     @Test
@@ -590,6 +683,7 @@ class BrainyPalParentWorkbenchUiTest {
     }
 
     private fun importSession(
+        title: String = "口算练习",
         entryGoal: String = "practice",
         riskFlags: List<String> = emptyList(),
         preview: BrainyPalParentImportSessionPreview = BrainyPalParentImportSessionPreview(
@@ -607,7 +701,7 @@ class BrainyPalParentWorkbenchUiTest {
         return BrainyPalParentImportSession(
             sessionId = "import_1",
             entryGoal = entryGoal,
-            title = "口算练习",
+            title = title,
             subject = "数学",
             rawText = "1. 1+1=?",
             riskFlags = riskFlags,

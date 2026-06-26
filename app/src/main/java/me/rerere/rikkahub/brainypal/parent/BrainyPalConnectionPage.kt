@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.brainypal.parent
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -75,8 +76,9 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 import me.rerere.rikkahub.brainypal.child.BrainyPalChildUiText
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskDetail
 import me.rerere.rikkahub.brainypal.shared.BrainyPalConfirmDictationOcrEvidenceRequest
-import me.rerere.rikkahub.brainypal.shared.BrainyPalConfirmPhotoScanRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalCreateTextImportBatchRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDueWrongQuestionReviewItem
+import me.rerere.rikkahub.brainypal.shared.BrainyPalImportBatch
 import me.rerere.rikkahub.brainypal.shared.BrainyPalManagementPin
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentApi
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentApiFactory
@@ -86,7 +88,6 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalCreateStrategyRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalCreateStrategyResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentAchievementWeeklySummaryResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
-import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionComposer
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentLearningRecordsSummaryResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
 import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterialComposer
@@ -117,6 +118,7 @@ import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import retrofit2.HttpException
@@ -157,6 +159,7 @@ fun BrainyPalConnectionPage(
     var confirmedMaterials by remember { mutableStateOf<List<BrainyPalParentMaterial>>(emptyList()) }
     var pendingTasks by remember { mutableStateOf<List<BrainyPalParentPracticeTaskView>>(emptyList()) }
     var currentImportSession by remember { mutableStateOf<BrainyPalParentImportSession?>(null) }
+    var latestImportBatch by remember { mutableStateOf<BrainyPalImportBatch?>(null) }
     var parentWorkbench by remember {
         mutableStateOf(BrainyPalParentWorkbench.from(BrainyPalParentTaskWorkbenchResponse()))
     }
@@ -270,6 +273,30 @@ fun BrainyPalConnectionPage(
         )
     }
 
+    fun openImportBatchReview(reviewPathOrUrl: String) {
+        val reviewUrl = BrainyPalParentWorkbenchUi.importBatchReviewUrl(
+            connection = settings.brainyPalChildConnection,
+            reviewPathOrUrl = reviewPathOrUrl,
+        )
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(reviewUrl)))
+    }
+
+    fun rememberImportBatch(batch: BrainyPalImportBatch) {
+        latestImportBatch = batch
+        currentImportSession = null
+    }
+
+    suspend fun refreshLatestImportBatch(api: BrainyPalParentApi) {
+        try {
+            latestImportBatch = api.getLatestImportBatch()
+        } catch (error: Throwable) {
+            if (error is CancellationException) {
+                throw error
+            }
+            latestImportBatch = null
+        }
+    }
+
     fun workloadGuardFrom(error: Throwable): BrainyPalParentWorkloadGuardConflict? {
         if (error !is HttpException || error.code() != 409) return null
         return BrainyPalParentWorkloadGuardConflict.fromErrorBody(
@@ -358,16 +385,23 @@ fun BrainyPalConnectionPage(
         scope.launch {
             val api = parentApiFromSettings() ?: return@launch
             parentBusy = true
-            parentMessage = "正在上传原图并识别题目..."
+            parentMessage = "正在上传原图并创建导入批次..."
             try {
                 val imageFile = copyUriToParentPhotoScanCache(context, uri)
-                photoScanSnapshot = api.createPhotoScan(parentPhotoScanPart(imageFile))
-                parentMessage = "已生成照片候选，请确认后写入错题。"
+                val batch = api.createPhotoImportBatch(
+                    file = parentPhotoScanPart(imageFile),
+                    title = plainTextRequestBody(materialTitle.ifBlank { "拍照试卷导入" }),
+                    parentIntent = plainTextRequestBody("record_wrong_questions"),
+                )
+                rememberImportBatch(batch)
+                photoScanSnapshot = null
+                openImportBatchReview(batch.reviewPath)
+                parentMessage = "已创建拍照导入批次，请在确认页核对后再下发。"
             } catch (error: Throwable) {
                 if (error is CancellationException) {
                     throw error
                 }
-                parentMessage = error.message ?: "照片扫描失败"
+                parentMessage = error.message ?: "照片导入批次创建失败"
             } finally {
                 parentBusy = false
             }
@@ -464,12 +498,21 @@ fun BrainyPalConnectionPage(
                     pendingTasks = pendingTasks,
                     tasks = parentTasks,
                 )
+                val latestImportBatchCard = latestImportBatch
+                    ?.takeIf { configured }
+                    ?.let {
+                        BrainyPalParentWorkbenchUi.importBatchCard(
+                            batch = it,
+                            connection = settings.brainyPalChildConnection,
+                        )
+                    }
                 item {
                     ParentWorkbenchOverviewCard(
                         configured = configured,
                         busy = parentBusy,
                         workbench = parentWorkbench,
                         summaryChips = summaryChips,
+                        latestImportBatchCard = latestImportBatchCard,
                         onChat = {
                             navController.navigate(
                                 Screen.Chat(
@@ -483,9 +526,13 @@ fun BrainyPalConnectionPage(
                             activeSupplyEntryId = "practice_questions"
                             scope.launch { listState.animateScrollToItem(3) }
                         },
+                        onOpenLatestImportBatch = {
+                            latestImportBatchCard?.let { openImportBatchReview(it.reviewUrl) }
+                        },
                         onRefresh = {
                             runParentAction("已刷新父母工作台") { api ->
                                 val tasks = applyWorkbenchResponse(api.getTaskWorkbench())
+                                refreshLatestImportBatch(api)
                                 learningSummary = api.getLearningRecordsSummary(limit = 6)
                                 refreshAchievementWeeklySummary(api)
                                 strategies = api.listStrategies().items
@@ -746,19 +793,38 @@ fun BrainyPalConnectionPage(
                                         message = parentMessage,
                                         onPickImage = { photoPickerLauncher.launch("image/*") },
                                         onConfirmAll = { snapshot ->
-                                            val candidateIds = snapshot.candidates.map { it.candidateId }
-                                            if (candidateIds.isEmpty()) {
-                                                parentMessage = "这张照片暂时没有可写入的候选题。"
+                                            val rawText = snapshot.candidates
+                                                .joinToString("\n\n") { candidate ->
+                                                    listOfNotNull(
+                                                        candidate.questionNumber
+                                                            ?.let { "题号：$it" },
+                                                        "题目：${candidate.questionText}",
+                                                        candidate.childAnswer
+                                                            ?.let { "孩子答案：$it" },
+                                                        candidate.workObserved
+                                                            ?.let { "书写过程：$it" },
+                                                        candidate.verification?.explanation
+                                                            ?.let { "AI 初判：$it" },
+                                                    ).joinToString("\n")
+                                                }
+                                            if (rawText.isBlank()) {
+                                                parentMessage = "这张照片暂时没有可确认的候选题。"
                                                 return@ParentPhotoScanCard
                                             }
-                                            runParentAction("已写入错题候选，后续可生成复练任务") { api ->
-                                                api.confirmPhotoScan(
-                                                    scanId = snapshot.scanId,
-                                                    request = BrainyPalConfirmPhotoScanRequest(
-                                                        candidateIds = candidateIds,
-                                                        parentNote = "家长确认照片扫描候选写入错题。",
-                                                    ),
+                                            runParentAction("已创建导入批次，请在确认页核对后再下发") { api ->
+                                                val batch = api.createTextImportBatch(
+                                                    BrainyPalCreateTextImportBatchRequest(
+                                                        title = materialTitle.ifBlank { "拍照试卷导入" },
+                                                        rawText = rawText,
+                                                        parentIntent = "record_wrong_questions",
+                                                        sourceRefs = listOf(
+                                                            "rikka-photo-scan://${snapshot.scanId}",
+                                                        ),
+                                                    )
                                                 )
+                                                rememberImportBatch(batch)
+                                                photoScanSnapshot = null
+                                                openImportBatchReview(batch.reviewPath)
                                                 null
                                             }
                                         },
@@ -886,7 +952,9 @@ fun BrainyPalConnectionPage(
                                                         subject = materialSubject.ifBlank { null },
                                                     )
                                                 )
-                                                parentChatTrigger?.importSession?.let {
+                                                parentChatTrigger?.importSession
+                                                    ?.takeIf { parentChatTrigger?.importBatch == null }
+                                                    ?.let {
                                                     currentImportSession = it
                                                 }
                                                 null
@@ -895,7 +963,9 @@ fun BrainyPalConnectionPage(
                                         onPrimaryAction = { trigger ->
                                             when (trigger.intent) {
                                                 "prepare_import" -> {
-                                                    trigger.importSession?.let {
+                                                    trigger.importBatch?.let {
+                                                        openImportBatchReview(it.reviewUrl)
+                                                    } ?: trigger.importSession?.let {
                                                         currentImportSession = it
                                                         activeSupplyEntryId = "practice_questions"
                                                     }
@@ -931,14 +1001,17 @@ fun BrainyPalConnectionPage(
                                         parentMessage = "请先粘贴或输入作业材料"
                                         return@ParentMaterialImportCard
                                     }
-                                    val request = BrainyPalParentImportSessionComposer.textRequest(
-                                        entryGoal = parentEntryGoalForSupplyEntry(activeSupplyEntryId),
-                                        title = materialTitle,
-                                        subject = materialSubject,
-                                        rawText = materialRawText,
+                                    val request = BrainyPalCreateTextImportBatchRequest(
+                                        title = materialTitle.trim().ifBlank { "导入作业材料" },
+                                        rawText = materialRawText.trim(),
+                                        parentIntent = BrainyPalParentWorkbenchUi
+                                            .importBatchIntentForSupplyEntry(activeSupplyEntryId),
+                                        sourceRefs = listOf("rikka-parent://$activeSupplyEntryId"),
                                     )
-                                    runParentAction("已生成确认方案，可保存为待发任务") { api ->
-                                        currentImportSession = api.createImportSession(request)
+                                    runParentAction("已创建导入批次，请在确认页核对后再下发") { api ->
+                                        val batch = api.createTextImportBatch(request)
+                                        rememberImportBatch(batch)
+                                        openImportBatchReview(batch.reviewPath)
                                         null
                                     }
                                 },
@@ -1243,25 +1316,16 @@ private fun ParentPendingTaskEditDialog(
     )
 }
 
-private fun parentEntryGoalForSupplyEntry(entryId: String): String {
-    return when (entryId) {
-        "dictation" -> "dictation"
-        "reading" -> "reading"
-        "recitation" -> "recitation"
-        "wrong_questions" -> "review"
-        "paste_text", "chat_light" -> "quick"
-        else -> "practice"
-    }
-}
-
 @Composable
 private fun ParentWorkbenchOverviewCard(
     configured: Boolean,
     busy: Boolean,
     workbench: BrainyPalParentWorkbench?,
     summaryChips: List<BrainyPalParentSummaryChip>,
+    latestImportBatchCard: BrainyPalParentImportBatchCard?,
     onChat: () -> Unit,
     onStructuredImport: () -> Unit,
+    onOpenLatestImportBatch: () -> Unit,
     onRefresh: () -> Unit,
 ) {
     Card(
@@ -1342,6 +1406,29 @@ private fun ParentWorkbenchOverviewCard(
                         onClick = onChat,
                     ) {
                         Text(BrainyPalTokens.parentSecondaryHeadline)
+                    }
+                }
+            }
+            latestImportBatchCard?.let { card ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("最近导入批次", style = MaterialTheme.typography.labelLarge)
+                        Text(card.title, style = MaterialTheme.typography.titleSmall)
+                        Text(card.body, style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onOpenLatestImportBatch,
+                        ) {
+                            Text(card.primaryActionLabel)
+                        }
                     }
                 }
             }
@@ -1903,7 +1990,7 @@ private fun ParentPhotoScanCard(
                 Text("拍照扫描导入", style = MaterialTheme.typography.titleMedium)
             }
             Text(
-                text = "几何题、手写步骤和试卷页先上传原图识别；家长确认候选后写入错题，再决定是否生成复练。",
+                text = "几何题、手写步骤和试卷页先上传原图；进入统一确认页核对后，再决定入库、复练或打印。",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Button(
@@ -1922,7 +2009,7 @@ private fun ParentPhotoScanCard(
             ParentBusyMessage(busy = busy, message = message)
             if (cards.isEmpty()) {
                 Text(
-                    text = "识别后会显示题号、题干、孩子答案、AI 初判和置信度。",
+                    text = "上传后会打开确认页，按页核对题号、题干、孩子答案、AI 初判和来源证据。",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             } else {
@@ -1941,7 +2028,7 @@ private fun ParentPhotoScanCard(
                         }
                     },
                 ) {
-                    Text("确认写入错题候选")
+                    Text("转到导入确认页")
                 }
             }
         }
@@ -2241,7 +2328,7 @@ private fun ParentMaterialImportCard(
                 enabled = configured && !busy,
                 onClick = onImport,
             ) {
-                Text("生成确认方案")
+                Text("创建导入批次并确认")
             }
             importSession?.let { session ->
                 ParentImportSessionConfirmationCard(
@@ -2975,6 +3062,8 @@ private fun parentPhotoScanPart(file: File): MultipartBody.Part {
         body = body,
     )
 }
+
+private fun plainTextRequestBody(value: String) = value.toRequestBody("text/plain".toMediaType())
 
 private fun Settings.withBrainyPalConnection(
     config: BrainyPalChildConnectionConfig,

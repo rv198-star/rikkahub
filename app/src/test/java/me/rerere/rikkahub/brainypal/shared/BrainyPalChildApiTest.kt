@@ -655,6 +655,66 @@ class BrainyPalChildApiTest {
     }
 
     @Test
+    fun `confirmed import batch task renders as normal child practice task`() {
+        val body = """
+            {
+              "task_id": "task-batch-1",
+              "attempt_session_id": "attempt_1",
+              "status": "in_progress",
+              "channel": "app",
+              "help_budget": 2,
+              "help_used": 0,
+              "remaining_help": 2,
+              "total_items": 2,
+              "answered_items": 1,
+              "submit_available": true,
+              "task": {
+                "task_id": "task-batch-1",
+                "title": "几何导入练习",
+                "mode": "practice",
+                "source_refs": ["import_batch://batch_1"],
+                "items": [
+                  {
+                    "item_id": "q1",
+                    "kind": "short_answer",
+                    "prompt": "1 + 1 = ?",
+                    "source_refs": ["import_batch://batch_1#material_1"]
+                  },
+                  {
+                    "item_id": "q2",
+                    "kind": "short_answer",
+                    "prompt": "3 + 4 = ?",
+                    "expected_answer": "7",
+                    "source_refs": ["import_batch://batch_1#wrong_1"],
+                    "result": "incorrect",
+                    "correction_status": "not_started"
+                  }
+                ]
+              },
+              "answers": {
+                "q1": {
+                  "item_id": "q1",
+                  "value": "2",
+                  "source": "app"
+                }
+              }
+            }
+        """.trimIndent()
+
+        val task = JsonInstant.decodeFromString<BrainyPalChildPracticeTaskDetail>(body)
+
+        assertEquals("几何导入练习", task.title)
+        assertEquals("practice", task.taskType)
+        assertTrue(task.isFromConfirmedImportBatch)
+        assertEquals("导入确认任务", task.sourceLabel)
+        assertEquals(2, task.items.size)
+        assertEquals("2", task.items.first().childAnswer)
+        assertEquals("not_started", task.items.last().correctionStatus)
+        assertFalse(task.hasUnconfirmedImportCandidateLeak)
+        assertTrue(task.canSubmit)
+    }
+
+    @Test
     fun `agent task spec decodes dictation orchestration policy`() {
         val body = """
             {
