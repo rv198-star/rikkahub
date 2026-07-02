@@ -261,7 +261,7 @@ data class BrainyPalChildPracticeTaskDetail(
             } else {
                 item.copy(
                     childAnswer = answer.value,
-                    attemptEvidence = answer.source,
+                    attemptEvidence = answer.attemptEvidence,
                 )
             }
         }
@@ -513,6 +513,8 @@ data class BrainyPalPracticeAttemptAnswer(
     @SerialName("item_id")
     val itemId: String,
     val value: String = "",
+    @SerialName("attempt_evidence")
+    val attemptEvidence: String = "",
     val source: String = "app",
     @SerialName("updated_at")
     val updatedAt: String = "",

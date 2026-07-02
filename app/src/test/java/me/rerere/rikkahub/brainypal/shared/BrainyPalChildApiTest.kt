@@ -312,6 +312,7 @@ class BrainyPalChildApiTest {
                 "q1": {
                   "item_id": "q1",
                   "value": "4",
+                  "attempt_evidence": "我先把 3 移到右边。",
                   "source": "app",
                   "updated_at": "2026-06-14T09:00:00+08:00"
                 }
@@ -368,6 +369,8 @@ class BrainyPalChildApiTest {
         assertFalse(task.canEditAttempt)
         assertFalse(task.canSubmit)
         assertEquals("4", task.items.single().childAnswer)
+        assertEquals("我先把 3 移到右边。", task.items.single().attemptEvidence)
+        assertEquals("我先把 3 移到右边。", task.answers["q1"]?.attemptEvidence)
         assertEquals("correct", task.result?.itemResults?.get("q1")?.status)
         assertEquals("4", task.result?.itemResults?.get("q1")?.expectedAnswer)
         assertEquals("wrong_question://wq-1", task.result?.itemResults?.get("q1")?.wrongQuestionRef)

@@ -107,6 +107,41 @@ class BrainyPalChildWorkbenchTest {
     }
 
     @Test
+    fun `workbench treats available agent tasks as startable`() {
+        val workbench = BrainyPalChildWorkbench.from(
+            connection = BrainyPalChildConnectionConfig(
+                baseUrl = "http://192.168.1.20:8000/rikka/v1",
+                apiKey = "brainypal-local",
+            ),
+            practiceTasks = listOf(
+                BrainyPalChildPracticeTaskSummary(
+                    taskId = "task-submitted",
+                    title = "等反馈",
+                    taskType = "wrong_question_practice",
+                    status = "submitted",
+                    itemCount = 1,
+                    helpLimit = 3,
+                    helpUsed = 0,
+                ),
+                BrainyPalChildPracticeTaskSummary(
+                    taskId = "task-available",
+                    title = "可开始",
+                    taskType = "wrong_question_practice",
+                    status = "available",
+                    itemCount = 1,
+                    helpLimit = 3,
+                    helpUsed = 0,
+                ),
+            ),
+            reviewOffer = null,
+            chatScreen = Screen.Chat("chat-id"),
+        )
+
+        assertEquals("开始下一件事", workbench.practiceAction.label)
+        assertEquals("1 个任务等你开始", workbench.practiceSummary)
+    }
+
+    @Test
     fun `task action labels follow task status`() {
         fun task(status: String) = BrainyPalChildPracticeTaskSummary(
             taskId = "task-$status",

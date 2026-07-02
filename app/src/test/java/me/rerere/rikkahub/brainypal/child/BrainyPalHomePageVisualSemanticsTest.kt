@@ -29,4 +29,11 @@ class BrainyPalHomePageVisualSemanticsTest {
         assertFalse(semantics.childSafeText.contains("金币"))
         assertFalse(semantics.childSafeText.contains("排行榜"))
     }
+
+    @Test
+    fun `home root does not expose a dead back button`() {
+        val semantics = BrainyPalHomePageVisualSemantics.default
+
+        assertFalse(semantics.showBackNavigation)
+    }
 }

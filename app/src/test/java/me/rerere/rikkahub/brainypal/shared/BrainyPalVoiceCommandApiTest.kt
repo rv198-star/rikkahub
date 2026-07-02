@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import me.rerere.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -109,6 +110,31 @@ class BrainyPalVoiceCommandApiTest {
         assertEquals("practice", api.lastRequest?.context)
         assertEquals(BrainyPalVoiceAction.ASK_HELP, state.action)
         assertEquals(BrainyPalDictationCommand.UNKNOWN, state.dictationCommand)
+        assertFalse(state.showButtonFallback)
+    }
+
+    @Test
+    fun `dictation interpreter executes clear local command without agent override`() = runBlocking {
+        val api = RecordingVoiceApi(
+            response = BrainyPalVoiceCommandResponse(
+                intent = "repeat",
+                confidence = "high",
+                childLabel = "再听一次",
+            )
+        )
+
+        val state = BrainyPalVoiceCommandInterpreter.interpret(
+            api = api,
+            transcript = "下一个",
+            context = "dictation",
+            audioPermissionGranted = true,
+            fallbackAction = BrainyPalVoiceAction.NEXT,
+        )
+
+        assertNull(api.lastRequest)
+        assertEquals(BrainyPalVoiceControlPhase.EXECUTING, state.phase)
+        assertEquals(BrainyPalVoiceAction.NEXT, state.action)
+        assertEquals(BrainyPalDictationCommand.NEXT, state.dictationCommand)
         assertFalse(state.showButtonFallback)
     }
 

@@ -142,10 +142,11 @@ object BrainyPalDictationVoiceCommandMatcher {
         if (!waitingForChild && resumePhrases.any(normalized::contains)) {
             return BrainyPalDictationCommand.RESUME
         }
+        if (nextPhrases.any(normalized::contains)) return BrainyPalDictationCommand.NEXT
+        if (waitingForChild && completionPhrases.any(normalized::contains)) return BrainyPalDictationCommand.NEXT
+        if (waitingForChild && normalized in ambiguousNextPhrases) return BrainyPalDictationCommand.NEXT
         if (repeatPhrases.any(normalized::contains)) return BrainyPalDictationCommand.REPEAT
         if (dontKnowPhrases.any(normalized::contains)) return BrainyPalDictationCommand.DONT_KNOW
-        if (nextPhrases.any(normalized::contains)) return BrainyPalDictationCommand.NEXT
-        if (waitingForChild && normalized in ambiguousNextPhrases) return BrainyPalDictationCommand.NEXT
         return BrainyPalDictationCommand.UNKNOWN
     }
 
@@ -166,11 +167,23 @@ object BrainyPalDictationVoiceCommandMatcher {
         "刚才没听清",
     )
     private val nextPhrases = listOf(
+        "下一",
         "下一个",
+        "下一条",
         "下一题",
-        "写好了",
+        "下一遍",
+        "念下一个",
+        "念下一条",
         "好了下一个",
         "继续",
+    )
+    private val completionPhrases = listOf(
+        "写好",
+        "写完",
+        "做完",
+        "完成",
+        "已经写好",
+        "已经写完",
     )
     private val dontKnowPhrases = listOf(
         "不会",

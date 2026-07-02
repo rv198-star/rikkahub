@@ -18,6 +18,7 @@ import me.rerere.asr.ASRState
 import me.rerere.asr.providers.DashScopeASRController
 import me.rerere.asr.providers.OpenAIRealtimeASRController
 import me.rerere.asr.providers.VolcengineASRController
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildConnectionConfig
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
 import okhttp3.OkHttpClient
@@ -34,8 +35,11 @@ fun rememberCustomAsrState(): CustomAsrState {
         CustomAsrStateImpl(context.applicationContext, httpClient)
     }
 
-    DisposableEffect(settings.selectedASRProviderId, settings.asrProviders) {
-        asrState.updateProvider(settings.getSelectedASRProvider())
+    DisposableEffect(settings.selectedASRProviderId, settings.asrProviders, settings.brainyPalChildConnection) {
+        asrState.updateProvider(
+            provider = settings.getSelectedASRProvider(),
+            brainyPalConnection = settings.brainyPalChildConnection,
+        )
         onDispose { }
     }
 
@@ -76,9 +80,18 @@ private class CustomAsrStateImpl(
     override val state: StateFlow<ASRState>
         get() = controller?.state ?: idleState
 
-    fun updateProvider(provider: ASRProviderSetting?) {
+    fun updateProvider(
+        provider: ASRProviderSetting?,
+        brainyPalConnection: BrainyPalChildConnectionConfig,
+    ) {
         controller?.dispose()
         controller = provider?.let { createController(it) }
+        if (
+            controller == null &&
+            BrainyPalAgentAsrPolicy.shouldUseAgentAsr(provider, brainyPalConnection)
+        ) {
+            controller = BrainyPalAgentAsrController(context, httpClient, brainyPalConnection)
+        }
         if (controller == null) {
             idleState.value = ASRState()
         }

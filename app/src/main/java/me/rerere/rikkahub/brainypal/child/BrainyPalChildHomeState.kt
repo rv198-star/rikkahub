@@ -36,7 +36,7 @@ data class BrainyPalChildHomeState(
                     BrainyPalChildModePolicy.agentServiceRootUrl(connection),
                     connection.apiKey,
                 )
-                val practiceTasks = api.listPracticeTasks().items
+                val practiceTasks = BrainyPalPracticeTaskOrdering.forChild(api.listPracticeTasks().items)
                 val reviewOffer = api.getReviewOffer()
                 build(
                     connection = connection,

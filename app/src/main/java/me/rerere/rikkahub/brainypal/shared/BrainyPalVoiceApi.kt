@@ -169,6 +169,12 @@ object BrainyPalVoiceCommandInterpreter {
         locale: String = "zh-CN",
         provider: String = "app_asr",
     ): BrainyPalVoiceControlState {
+        if (context == "dictation" && fallbackAction.toDictationCommand() != BrainyPalDictationCommand.UNKNOWN) {
+            return localDictationState(
+                fallbackAction = fallbackAction,
+                audioPermissionGranted = audioPermissionGranted,
+            )
+        }
         return try {
             val response = api.interpretVoiceCommand(
                 BrainyPalInterpretVoiceCommandRequest(
@@ -189,6 +195,27 @@ object BrainyPalVoiceCommandInterpreter {
                 audioPermissionGranted = audioPermissionGranted,
             )
         }
+    }
+
+    private fun localDictationState(
+        fallbackAction: BrainyPalVoiceAction,
+        audioPermissionGranted: Boolean,
+    ): BrainyPalVoiceControlState {
+        return BrainyPalVoiceControlState(
+            phase = BrainyPalVoiceControlPhase.EXECUTING,
+            childMessage = when (fallbackAction) {
+                BrainyPalVoiceAction.REPEAT -> "再听一次"
+                BrainyPalVoiceAction.NEXT -> "进入下一条"
+                BrainyPalVoiceAction.DONT_KNOW -> "先跳到下一条"
+                BrainyPalVoiceAction.PAUSE -> "已暂停"
+                BrainyPalVoiceAction.RESUME -> "继续"
+                else -> "收到"
+            },
+            canUseVoice = audioPermissionGranted,
+            showButtonFallback = false,
+            action = fallbackAction,
+            dictationCommand = fallbackAction.toDictationCommand(),
+        )
     }
 
     fun fallbackState(

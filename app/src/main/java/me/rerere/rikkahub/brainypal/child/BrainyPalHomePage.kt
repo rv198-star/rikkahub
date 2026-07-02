@@ -58,6 +58,7 @@ data class BrainyPalHomeVisualSemantics(
     val secondaryActionTone: String,
     val maxPreviewTasks: Int,
     val childSafeText: String,
+    val showBackNavigation: Boolean,
 )
 
 object BrainyPalHomePageVisualSemantics {
@@ -78,6 +79,7 @@ object BrainyPalHomePageVisualSemantics {
         maxPreviewTasks = 3,
         childSafeText = "今天先从一个小问题开始。" +
             "${BrainyPalTokens.stationFullName}记录愿意开始、说出卡点和提示后再试的小信号。",
+        showBackNavigation = false,
     )
 }
 
@@ -85,12 +87,17 @@ object BrainyPalHomePageVisualSemantics {
 fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
     val navController = LocalNavController.current
     val state by vm.state.collectAsStateWithLifecycle()
+    val visualSemantics = BrainyPalHomePageVisualSemantics.default
 
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(BrainyPalTokens.stationName) },
-                navigationIcon = { BackButton() },
+                navigationIcon = {
+                    if (visualSemantics.showBackNavigation) {
+                        BackButton()
+                    }
+                },
                 actions = {
                     IconButton(onClick = vm::refresh) {
                         Icon(HugeIcons.Refresh03, null)

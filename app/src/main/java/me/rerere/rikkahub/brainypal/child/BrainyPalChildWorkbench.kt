@@ -73,7 +73,7 @@ data class BrainyPalChildWorkbench(
         }
 
         private fun List<BrainyPalChildPracticeTaskSummary>.summaryText(): String {
-            val activeTasks = filter { it.status in startableTaskStatuses }
+            val activeTasks = filter { BrainyPalPracticeTaskOrdering.isActionable(it) }
             val feedbackCount = count { it.status in setOf("submitted", "reviewing") }
             return when {
                 activeTasks.any { it.status == "in_progress" || it.needsMoreEffort } ->
@@ -87,6 +87,7 @@ data class BrainyPalChildWorkbench(
         }
 
         private val startableTaskStatuses = setOf(
+            "available",
             "pending",
             "assigned",
             "accepted",

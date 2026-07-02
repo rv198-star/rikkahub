@@ -18,6 +18,10 @@ class BrainyPalDictationSessionTest {
             BrainyPalDictationVoiceCommandMatcher.match("写好了，下一个", waitingForChild = true),
         )
         assertEquals(
+            BrainyPalDictationCommand.NEXT,
+            BrainyPalDictationVoiceCommandMatcher.match("念下一遍", waitingForChild = true),
+        )
+        assertEquals(
             BrainyPalDictationCommand.DONT_KNOW,
             BrainyPalDictationVoiceCommandMatcher.match("这个我不会，先跳过", waitingForChild = true),
         )
@@ -44,6 +48,21 @@ class BrainyPalDictationSessionTest {
         assertEquals(
             BrainyPalDictationCommand.UNKNOWN,
             BrainyPalDictationVoiceCommandMatcher.match("好", waitingForChild = false),
+        )
+    }
+
+    @Test
+    fun `completion phrases advance only while waiting for child writing`() {
+        listOf("写好了", "写好啦", "写完了", "我写完了", "做完了", "完成了").forEach { phrase ->
+            assertEquals(
+                phrase,
+                BrainyPalDictationCommand.NEXT,
+                BrainyPalDictationVoiceCommandMatcher.match(phrase, waitingForChild = true),
+            )
+        }
+        assertEquals(
+            BrainyPalDictationCommand.UNKNOWN,
+            BrainyPalDictationVoiceCommandMatcher.match("写完了", waitingForChild = false),
         )
     }
 

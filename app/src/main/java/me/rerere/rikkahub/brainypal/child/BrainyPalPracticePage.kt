@@ -32,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -57,8 +58,12 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.rememberAsyncImagePainter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import me.rerere.asr.ASRStatus
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
@@ -111,7 +116,9 @@ import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.context.LocalASRState
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalTTSState
+import me.rerere.rikkahub.ui.hooks.CustomTtsState
 import me.rerere.rikkahub.brainypal.child.theme.BrainyPalChildTheme
+import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationSpeechPlan
 import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.plus
 import java.io.File
@@ -445,6 +452,11 @@ private fun PracticeTaskDetailContent(
     val cameraPermission = rememberPermissionState(PermissionCamera)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var dictationPlaybackJob by remember(detail.taskId) { mutableStateOf<Job?>(null) }
+    var dictationPlaybackRunId by remember(detail.taskId) { mutableStateOf(0) }
+    var dictationPlaybackCountdown by remember(detail.taskId) {
+        mutableStateOf<BrainyPalDictationPlaybackCountdown?>(null)
+    }
     if (isDictation) {
         PermissionManager(permissionState = asrPermission)
         PermissionManager(permissionState = cameraPermission)
@@ -506,6 +518,18 @@ private fun PracticeTaskDetailContent(
         }
     }
 
+    LaunchedEffect(isDictation, dictationSession.status, asrState.status) {
+        if (
+            BrainyPalDictationVoiceControlLifecycle.shouldStopAfterSessionUpdate(
+                isDictation = isDictation,
+                session = dictationSession,
+                asrStatus = asrState.status,
+            )
+        ) {
+            asr.stop()
+        }
+    }
+
     fun launchDictationCamera() {
         if (!cameraPermission.allRequiredPermissionsGranted) {
             cameraPermission.requestPermissions()
@@ -521,11 +545,32 @@ private fun PracticeTaskDetailContent(
         cameraLauncher.launch(uri)
     }
 
-    fun playDictationItem(itemId: String) {
+    fun playDictationItem(itemId: String, repeatOnly: Boolean = false) {
         val item = detail.items.firstOrNull { it.itemId == itemId } ?: return
         val index = detail.items.indexOf(item).coerceAtLeast(0)
         tts.setSpeed(1.0f)
-        tts.speak(BrainyPalDictationSpeech.build(detail, item, index), flushCalled = true)
+        val speechPlan = if (repeatOnly) {
+            BrainyPalDictationSpeech.repeatPlan(detail, item)
+        } else {
+            BrainyPalDictationSpeech.plan(detail, item, index)
+        }
+        dictationPlaybackJob?.cancel()
+        tts.stop()
+        val runId = dictationPlaybackRunId + 1
+        dictationPlaybackRunId = runId
+        dictationPlaybackJob = scope.launch {
+            try {
+                speakDictationPlan(tts, speechPlan) { countdown ->
+                    if (dictationPlaybackRunId == runId) {
+                        dictationPlaybackCountdown = countdown
+                    }
+                }
+            } finally {
+                if (dictationPlaybackRunId == runId) {
+                    dictationPlaybackCountdown = null
+                }
+            }
+        }
     }
 
     fun applyDictationCommand(command: BrainyPalDictationCommand) {
@@ -534,6 +579,7 @@ private fun PracticeTaskDetailContent(
         when (command) {
             BrainyPalDictationCommand.PAUSE -> {
                 tts.pause()
+                dictationPlaybackCountdown = null
                 dictationMessage = "已暂停。说“继续”或点继续。"
             }
 
@@ -560,15 +606,23 @@ private fun PracticeTaskDetailContent(
                 }
             }
 
-            BrainyPalDictationCommand.START,
-            BrainyPalDictationCommand.REPEAT -> {
+            BrainyPalDictationCommand.START -> {
                 update.playbackItemId?.let(::playDictationItem)
                 dictationMessage = "正在播放当前听写。"
+            }
+
+            BrainyPalDictationCommand.REPEAT -> {
+                update.playbackItemId?.let { playDictationItem(it, repeatOnly = true) }
+                dictationMessage = "再听当前这一条。"
             }
 
             BrainyPalDictationCommand.UNKNOWN -> {
                 dictationMessage = "我没听清，可以再说一遍或点按钮。"
             }
+        }
+        if (update.state.isFinished) {
+            dictationPlaybackCountdown = null
+            asr.stop()
         }
     }
 
@@ -694,6 +748,7 @@ private fun PracticeTaskDetailContent(
             DictationControlCard(
                 session = dictationSession,
                 message = dictationMessage,
+                playbackCountdown = dictationPlaybackCountdown,
                 asrStatus = asrState.status,
                 asrAvailable = asrState.isAvailable || asrState.isRecording,
                 audioPermissionGranted = asrPermission.allRequiredPermissionsGranted,
@@ -1475,6 +1530,7 @@ private fun TaskVoiceControlCard(
 private fun DictationControlCard(
     session: BrainyPalDictationSessionState,
     message: String,
+    playbackCountdown: BrainyPalDictationPlaybackCountdown?,
     asrStatus: ASRStatus,
     asrAvailable: Boolean,
     audioPermissionGranted: Boolean,
@@ -1493,6 +1549,11 @@ private fun DictationControlCard(
         BrainyPalDictationSessionStatus.PAUSED -> "已暂停"
         BrainyPalDictationSessionStatus.FINISHED -> "已播完"
     }
+    val voiceControl = BrainyPalDictationVoiceControlUiPolicy.model(
+        asrStatus = asrStatus,
+        asrAvailable = asrAvailable,
+        audioPermissionGranted = audioPermissionGranted,
+    )
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
@@ -1513,6 +1574,9 @@ private fun DictationControlCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
+            if (playbackCountdown != null) {
+                DictationPlaybackCountdownBar(playbackCountdown)
+            }
             if (session.dontKnowCounts.values.sum() > 0 || session.repeatCounts.values.sum() > 0) {
                 Text(
                     text = "过程记录：再听 ${session.repeatCounts.values.sum()} 次，不会 ${session.dontKnowCounts.values.sum()} 次",
@@ -1537,7 +1601,7 @@ private fun DictationControlCard(
             ) {
                 Icon(HugeIcons.Book03, null)
                 Text(
-                    text = if (session.status == BrainyPalDictationSessionStatus.PAUSED) "继续" else "开始听写",
+                    text = BrainyPalDictationPrimaryButtonPolicy.label(session.status),
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
@@ -1583,7 +1647,7 @@ private fun DictationControlCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 44.dp),
-                enabled = asrAvailable,
+                enabled = voiceControl.enabled,
                 onClick = {
                     when (asrStatus) {
                         ASRStatus.Listening -> onStopVoiceControl()
@@ -1603,23 +1667,60 @@ private fun DictationControlCard(
             ) {
                 Icon(HugeIcons.MessageQuestion, null)
                 Text(
-                    text = when (asrStatus) {
-                        ASRStatus.Listening -> "停止语音控制"
-                        ASRStatus.Connecting -> "正在连接语音控制"
-                        ASRStatus.Stopping -> "正在停止语音控制"
-                        else -> "开启语音控制"
-                    },
+                    text = voiceControl.label,
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
-            if (!asrAvailable && asrStatus == ASRStatus.Idle) {
+            val helperText = voiceControl.helperText
+            if (helperText != null) {
                 Text(
-                    text = "配置 ASR 后，可以说“再听一次”“下一个”“不会”“暂停”“继续”。",
+                    text = "$helperText 配置后可说“再听一次”“下一个”“不会”“暂停”“继续”。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun DictationPlaybackCountdownBar(
+    playbackCountdown: BrainyPalDictationPlaybackCountdown,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.64f),
+                shape = RoundedCornerShape(14.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = playbackCountdown.stepLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Text(
+                text = playbackCountdown.countdownLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { playbackCountdown.progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f),
+        )
     }
 }
 
@@ -2044,4 +2145,70 @@ private fun me.rerere.rikkahub.ui.components.ui.CardGroupScope.taskItem(
             }
         },
     )
+}
+
+private suspend fun speakDictationPlan(
+    tts: CustomTtsState,
+    plan: BrainyPalDictationSpeechPlan,
+    onPlaybackCountdown: (BrainyPalDictationPlaybackCountdown?) -> Unit = {},
+) {
+    val utterances = plan.utterances.map { it.trim() }.filter { it.isNotBlank() }
+    utterances.forEachIndexed { index, text ->
+        onPlaybackCountdown(
+            BrainyPalDictationPlaybackCountdownPolicy.modelForUtterance(
+                utterances = utterances,
+                utteranceIndex = index,
+                millisUntilNext = 0L,
+                waitingForNextSegment = false,
+            )
+        )
+        tts.speak(text, flushCalled = true)
+        waitForDictationUtterance(tts)
+        if (index < utterances.lastIndex) {
+            delayDictationInterval(
+                millis = if (text.isDictationIndexPrompt()) 700L else plan.pauseMillis,
+                onRemainingMillis = { remainingMillis ->
+                    onPlaybackCountdown(
+                        BrainyPalDictationPlaybackCountdownPolicy.modelForUtterance(
+                            utterances = utterances,
+                            utteranceIndex = index,
+                            millisUntilNext = remainingMillis,
+                            waitingForNextSegment = true,
+                        )
+                    )
+                },
+            )
+        }
+    }
+    onPlaybackCountdown(null)
+}
+
+private suspend fun waitForDictationUtterance(tts: CustomTtsState) {
+    val started = withTimeoutOrNull(2_000L) {
+        tts.isSpeaking.first { it }
+    }
+    if (started == true) {
+        withTimeoutOrNull(15_000L) {
+            tts.isSpeaking.first { !it }
+        }
+    } else {
+        delay(500L)
+    }
+}
+
+private suspend fun delayDictationInterval(
+    millis: Long,
+    onRemainingMillis: (Long) -> Unit,
+) {
+    var remaining = millis.coerceAtLeast(0L)
+    while (remaining > 0L) {
+        onRemainingMillis(remaining)
+        val tick = minOf(remaining, 250L)
+        delay(tick)
+        remaining -= tick
+    }
+}
+
+private fun String.isDictationIndexPrompt(): Boolean {
+    return startsWith("第 ") && endsWith(" 条")
 }
