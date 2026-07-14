@@ -51,6 +51,8 @@ class BrainyPalChildWorkbenchTest {
         assertEquals("今日练习", workbench.practiceAction.label)
         assertEquals(Screen.BrainyPalPractice, workbench.practiceAction.target)
         assertEquals("1 个任务等你开始", workbench.practiceSummary)
+        assertEquals(Screen.BrainyPalPractice, workbench.primaryAction.target)
+        assertEquals(Screen.Chat("chat-id"), workbench.secondaryAction.target)
     }
 
     @Test
@@ -79,5 +81,6 @@ class BrainyPalChildWorkbenchTest {
         assertEquals("要不要试一小步？", workbench.reviewMessage)
         assertEquals("复习一下", workbench.reviewAction.label)
         assertEquals(Screen.BrainyPalPractice, workbench.reviewAction.target)
+        assertEquals(Screen.Chat("chat-id"), workbench.primaryAction.target)
     }
 }

@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.pages.brainypal
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.filter
@@ -9,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.brainypal.BrainyPalChildApiFactory
 import me.rerere.rikkahub.brainypal.BrainyPalChildHomeState
@@ -19,6 +22,7 @@ import me.rerere.rikkahub.brainypal.BrainyPalRecordPracticeTaskAnswerRequest
 import me.rerere.rikkahub.brainypal.BrainyPalRequestPracticeTaskHelpRequest
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.utils.UiState
+import retrofit2.HttpException
 import kotlin.uuid.Uuid
 
 data class BrainyPalPracticeTaskActionStatus(
@@ -33,6 +37,7 @@ data class BrainyPalPracticeTaskHelpHint(
 
 data class BrainyPalPracticeTaskDetailState(
     val selectedTaskId: String? = null,
+    val selectedItemIndex: Int = 0,
     val detail: UiState<BrainyPalChildPracticeTaskDetail> = UiState.Idle,
     val drafts: BrainyPalPracticeDrafts = BrainyPalPracticeDrafts(),
     val helpHint: BrainyPalPracticeTaskHelpHint? = null,
@@ -43,11 +48,20 @@ data class BrainyPalPracticeTaskDetailState(
 class BrainyPalHomeVM(
     private val settingsStore: SettingsStore,
     private val apiFactory: BrainyPalChildApiFactory,
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     private val chatScreen = Screen.Chat(id = Uuid.random().toString())
     private val _state = MutableStateFlow<UiState<BrainyPalChildHomeState>>(UiState.Loading)
     val state: StateFlow<UiState<BrainyPalChildHomeState>> = _state.asStateFlow()
-    private val _practiceDetailState = MutableStateFlow(BrainyPalPracticeTaskDetailState())
+    private val _practiceDetailState = MutableStateFlow(
+        BrainyPalPracticeTaskDetailState(
+            selectedTaskId = savedStateHandle[KEY_SELECTED_TASK],
+            selectedItemIndex = savedStateHandle[KEY_SELECTED_ITEM_INDEX] ?: 0,
+            drafts = savedStateHandle.get<String>(KEY_DRAFTS)
+                ?.let { runCatching { Json.decodeFromString<BrainyPalPracticeDrafts>(it) }.getOrNull() }
+                ?: BrainyPalPracticeDrafts(),
+        )
+    )
     val practiceDetailState: StateFlow<BrainyPalPracticeTaskDetailState> = _practiceDetailState.asStateFlow()
 
     init {
@@ -61,6 +75,7 @@ class BrainyPalHomeVM(
                     _state.value = UiState.Success(state)
                 }
         }
+        _practiceDetailState.value.selectedTaskId?.let(::selectPracticeTask)
     }
 
     fun refresh() {
@@ -80,25 +95,33 @@ class BrainyPalHomeVM(
     }
 
     fun selectPracticeTask(taskId: String) {
+        val current = _practiceDetailState.value
+        val preserveDrafts = savedStateHandle.get<String>(KEY_RETAINED_TASK) == taskId
+        _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
+            selectedTaskId = taskId,
+            selectedItemIndex = if (preserveDrafts) current.selectedItemIndex else 0,
+            detail = UiState.Loading,
+            drafts = if (preserveDrafts) current.drafts else BrainyPalPracticeDrafts(),
+        )
+        savedStateHandle[KEY_SELECTED_TASK] = taskId
+        savedStateHandle[KEY_RETAINED_TASK] = taskId
+        persistPracticeState()
         viewModelScope.launch {
-            _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
-                selectedTaskId = taskId,
-                detail = UiState.Loading,
-            )
             runCatching {
                 practiceApi().getPracticeTask(taskId)
             }.onSuccess { detail ->
-                _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
-                    selectedTaskId = taskId,
+                _practiceDetailState.value = _practiceDetailState.value.copy(
                     detail = UiState.Success(detail),
-                    drafts = BrainyPalPracticeDrafts().replaceFromDetail(detail),
+                    drafts = _practiceDetailState.value.drafts.replaceFromDetail(detail),
+                    selectedItemIndex = _practiceDetailState.value.selectedItemIndex
+                        .coerceIn(0, (detail.items.size - 1).coerceAtLeast(0)),
                 )
+                persistPracticeState()
             }.onFailure { error ->
                 if (error is CancellationException) {
                     throw error
                 }
-                _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
-                    selectedTaskId = taskId,
+                _practiceDetailState.value = _practiceDetailState.value.copy(
                     detail = UiState.Error(error),
                     actionStatus = BrainyPalPracticeTaskActionStatus(
                         message = "暂时连不上 BrainyPal，可以稍后再试",
@@ -110,7 +133,24 @@ class BrainyPalHomeVM(
     }
 
     fun closePracticeTask() {
-        _practiceDetailState.value = BrainyPalPracticeTaskDetailState()
+        _practiceDetailState.value = _practiceDetailState.value.copy(
+            selectedTaskId = null,
+            detail = UiState.Idle,
+            helpHint = null,
+            actionInProgress = false,
+            actionStatus = null,
+        )
+        savedStateHandle[KEY_SELECTED_TASK] = null
+        persistPracticeState()
+    }
+
+    fun selectPracticeItem(index: Int) {
+        val detail = (_practiceDetailState.value.detail as? UiState.Success)?.data ?: return
+        _practiceDetailState.value = _practiceDetailState.value.copy(
+            selectedItemIndex = index.coerceIn(0, (detail.items.size - 1).coerceAtLeast(0)),
+            actionStatus = null,
+        )
+        persistPracticeState()
     }
 
     fun savePracticeAnswer(taskId: String, itemId: String, answer: String, evidence: String) {
@@ -143,6 +183,7 @@ class BrainyPalHomeVM(
                 evidence = evidence,
             )
         )
+        persistPracticeState()
     }
 
     fun requestPracticeHelp(taskId: String, itemId: String) {
@@ -150,6 +191,7 @@ class BrainyPalHomeVM(
             taskId = taskId,
             successMessage = "提示已显示在题目下方",
             helpItemId = itemId,
+            helpRequest = true,
         ) {
             requestPracticeTaskHelp(
                 taskId = taskId,
@@ -162,6 +204,7 @@ class BrainyPalHomeVM(
         updatePracticeTask(
             taskId = taskId,
             successMessage = "已提交练习",
+            focusLowEffortOnResponse = true,
         ) {
             submitPracticeTask(taskId = taskId)
         }
@@ -172,6 +215,8 @@ class BrainyPalHomeVM(
         successMessage: String,
         savedAnswer: SavedPracticeAnswer? = null,
         helpItemId: String? = null,
+        helpRequest: Boolean = false,
+        focusLowEffortOnResponse: Boolean = false,
         action: suspend me.rerere.rikkahub.brainypal.BrainyPalChildApi.() -> BrainyPalChildPracticeTaskDetail,
     ) {
         viewModelScope.launch {
@@ -208,29 +253,43 @@ class BrainyPalHomeVM(
                         }
                     }
                     ?: _practiceDetailState.value.helpHint
-                _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
-                    selectedTaskId = taskId,
+                val selectedItemIndex = if (focusLowEffortOnResponse && detail.needsMoreEffort) {
+                    detail.items.indexOfFirst { it.needsMoreEffort }.takeIf { it >= 0 }
+                        ?: _practiceDetailState.value.selectedItemIndex
+                } else {
+                    _practiceDetailState.value.selectedItemIndex
+                }
+                _practiceDetailState.value = _practiceDetailState.value.copy(
                     detail = UiState.Success(detail),
                     drafts = currentDrafts.replaceFromDetail(detail),
                     helpHint = helpHint,
+                    actionInProgress = false,
+                    selectedItemIndex = selectedItemIndex,
                     actionStatus = BrainyPalPracticeTaskActionStatus(
                         message = message,
                         error = detail.needsMoreEffort,
                     ),
                 )
+                persistPracticeState()
                 refresh()
             }.onFailure { error ->
                 if (error is CancellationException) {
                     throw error
                 }
+                val helpExhausted = helpRequest && error is HttpException && error.code() == 409
                 _practiceDetailState.value = _practiceDetailState.value.copy(
                     selectedTaskId = taskId,
                     actionInProgress = false,
                     actionStatus = BrainyPalPracticeTaskActionStatus(
-                        message = "暂时连不上 BrainyPal，可以稍后再试",
+                        message = if (helpExhausted) {
+                            "提示次数已经用完，可以先写下已知条件或卡住的地方。"
+                        } else {
+                            "暂时连不上 BrainyPal，可以稍后再试"
+                        },
                         error = true,
                     ),
                 )
+                persistPracticeState()
             }
         }
     }
@@ -244,6 +303,19 @@ class BrainyPalHomeVM(
             BrainyPalChildModePolicy.agentServiceRootUrl(connection),
             connection.apiKey,
         )
+    }
+
+    private fun persistPracticeState() {
+        val state = _practiceDetailState.value
+        savedStateHandle[KEY_SELECTED_ITEM_INDEX] = state.selectedItemIndex
+        savedStateHandle[KEY_DRAFTS] = Json.encodeToString(state.drafts)
+    }
+
+    private companion object {
+        const val KEY_SELECTED_TASK = "brainypal.practice.selectedTask"
+        const val KEY_RETAINED_TASK = "brainypal.practice.retainedTask"
+        const val KEY_SELECTED_ITEM_INDEX = "brainypal.practice.selectedItemIndex"
+        const val KEY_DRAFTS = "brainypal.practice.drafts"
     }
 }
 

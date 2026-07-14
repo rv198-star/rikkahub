@@ -97,7 +97,6 @@ import me.rerere.hugeicons.stroke.ArrowUp02
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.FullScreen
 import me.rerere.hugeicons.stroke.Zap
-import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.datastore.Settings
@@ -143,6 +142,7 @@ fun ChatInput(
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
+    restrictedMode: Boolean = false,
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -398,7 +398,7 @@ fun ChatInput(
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            if (!BuildConfig.BRAINYPAL_CHILD_MODE) {
+                            if (!restrictedMode) {
                                 // Model Picker
                                 ModelSelector(
                                     modelId = assistant.chatModelId ?: settings.chatModelId,
@@ -450,7 +450,7 @@ fun ChatInput(
 
                         }
 
-                        if (!BuildConfig.BRAINYPAL_CHILD_MODE) {
+                        if (!restrictedMode) {
                             ActionIconButton(
                                 onClick = {
                                     showFilesSheet = true
@@ -548,7 +548,7 @@ fun ChatInput(
         }
     }
 
-    if (showFilesSheet) {
+    if (showFilesSheet && !restrictedMode) {
         ModalBottomSheet(
             onDismissRequest = { dismissExpand() },
         ) {

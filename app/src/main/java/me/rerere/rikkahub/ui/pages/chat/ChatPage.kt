@@ -52,7 +52,10 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
+import me.rerere.hugeicons.stroke.Home03
+import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
@@ -75,7 +78,13 @@ import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
 
 @Composable
-fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
+fun ChatPage(
+    id: Uuid,
+    text: String?,
+    files: List<Uri>,
+    nodeId: Uuid? = null,
+    childMode: Boolean = false,
+) {
     val vm: ChatVM = koinViewModel(
         parameters = {
             parametersOf(id.toString())
@@ -160,6 +169,28 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     }
 
     when {
+        childMode -> {
+            ChatPageContent(
+                inputState = inputState,
+                loadingJob = loadingJob,
+                processingStatus = processingStatus,
+                setting = setting,
+                conversation = conversation,
+                drawerState = drawerState,
+                navController = navController,
+                vm = vm,
+                chatListState = chatListState,
+                enableWebSearch = false,
+                currentChatModel = currentChatModel,
+                bigScreen = false,
+                errors = errors,
+                childMode = true,
+                hasPracticeContext = text != null,
+                onDismissError = { vm.dismissError(it) },
+                onClearAllErrors = { vm.clearAllErrors() },
+            )
+        }
+
         isBigScreen -> {
             PermanentNavigationDrawer(
                 drawerContent = {
@@ -185,6 +216,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     currentChatModel = currentChatModel,
                     bigScreen = true,
                     errors = errors,
+                    childMode = false,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                 )
@@ -217,6 +249,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     currentChatModel = currentChatModel,
                     bigScreen = false,
                     errors = errors,
+                    childMode = false,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                 )
@@ -243,6 +276,8 @@ private fun ChatPageContent(
     enableWebSearch: Boolean,
     currentChatModel: Model?,
     errors: List<ChatError>,
+    childMode: Boolean,
+    hasPracticeContext: Boolean = false,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
 ) {
@@ -260,22 +295,27 @@ private fun ChatPageContent(
         AssistantBackground(setting = setting, modifier = Modifier.hazeSource(hazeState))
         Scaffold(
             topBar = {
-                TopBar(
-                    settings = setting,
-                    conversation = conversation,
-                    bigScreen = bigScreen,
-                    drawerState = drawerState,
-                    previewMode = previewMode,
-                    onNewChat = {
-                        navigateToChatPage(navController)
-                    },
-                    onClickMenu = {
-                        previewMode = !previewMode
-                    },
-                    onUpdateTitle = {
-                        vm.updateTitle(it)
-                    }
-                )
+                if (childMode) {
+                    BrainyPalChatTopBar(
+                        hasPracticeContext = hasPracticeContext,
+                        onBack = {
+                            if (hasPracticeContext) navController.popBackStack()
+                            else navController.navigate(Screen.BrainyPalHome)
+                        },
+                        onNewChat = { navigateToChatPage(navController) },
+                    )
+                } else {
+                    TopBar(
+                        settings = setting,
+                        conversation = conversation,
+                        bigScreen = bigScreen,
+                        drawerState = drawerState,
+                        previewMode = previewMode,
+                        onNewChat = { navigateToChatPage(navController) },
+                        onClickMenu = { previewMode = !previewMode },
+                        onUpdateTitle = { vm.updateTitle(it) },
+                    )
+                }
             },
             bottomBar = {
                 ChatInput(
@@ -324,6 +364,7 @@ private fun ChatPageContent(
                         }
                         inputState.clearInput()
                     },
+                    restrictedMode = childMode,
                     onUpdateChatModel = {
                         vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
                     },
@@ -432,9 +473,43 @@ private fun ChatPageContent(
                     vm.updateConversation(conversation.copy(customSystemPrompt = newPrompt))
                     vm.saveConversationAsync()
                 },
+                restrictedMode = childMode,
             )
         }
     }
+}
+
+@Composable
+private fun BrainyPalChatTopBar(
+    hasPracticeContext: Boolean,
+    onBack: () -> Unit,
+    onNewChat: () -> Unit,
+) {
+    TopAppBar(
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = if (hasPracticeContext) HugeIcons.ArrowLeft01 else HugeIcons.Home03,
+                    contentDescription = if (hasPracticeContext) "返回当前练习" else "返回 BrainyPal 首页",
+                )
+            }
+        },
+        title = {
+            Column {
+                Text("问一问", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = if (hasPracticeContext) "正在讨论当前题目" else "对话只用于学习帮助",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = onNewChat) {
+                Icon(HugeIcons.MessageAdd01, contentDescription = "开始新对话")
+            }
+        },
+    )
 }
 
 @Composable

@@ -1,11 +1,15 @@
 package me.rerere.rikkahub.brainypal
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class BrainyPalPracticeDraft(
     val answer: String = "",
     val evidence: String = "",
     val dirty: Boolean = false,
 )
 
+@Serializable
 data class BrainyPalPracticeDrafts(
     private val values: Map<String, BrainyPalPracticeDraft> = emptyMap(),
 ) {
