@@ -1,11 +1,28 @@
 package me.rerere.rikkahub.brainypal.child
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskDetail
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskItem
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class BrainyPalPracticeDraftsTest {
+    @Test
+    fun `drafts survive saved state json round trip`() {
+        val drafts = BrainyPalPracticeDrafts().edit(
+            itemId = "item_1",
+            answer = "42",
+            evidence = "先列出已知条件",
+        )
+
+        val restored = Json.decodeFromString<BrainyPalPracticeDrafts>(Json.encodeToString(drafts))
+
+        assertEquals("42", restored.get("item_1").answer)
+        assertEquals("先列出已知条件", restored.get("item_1").evidence)
+        assertEquals(true, restored.get("item_1").dirty)
+    }
+
     @Test
     fun `server refresh preserves unsaved draft on another item`() {
         val detail = practiceDetail(

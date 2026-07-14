@@ -8,11 +8,12 @@ import org.junit.Test
 
 class BrainyPalChildChatDrawerPolicyTest {
     @Test
-    fun `child drawer keeps chat history visible and promotes home return`() {
+    fun `child chat does not mount the generic conversation drawer`() {
         val layout = BrainyPalChildChatDrawerPolicy.layoutFor(childMode = true)
 
-        assertTrue(layout.showConversationHistory)
-        assertTrue(layout.showHomeReturnAction)
+        assertFalse(layout.mountConversationDrawer)
+        assertFalse(layout.showConversationHistory)
+        assertFalse(layout.showHomeReturnAction)
         assertFalse(layout.showFooterHomeShortcut)
         assertFalse(layout.allowConversationMaintenanceActions)
         assertEquals(Screen.BrainyPalHome, layout.homeReturnTarget)
@@ -20,11 +21,11 @@ class BrainyPalChildChatDrawerPolicyTest {
     }
 
     @Test
-    fun `child chat top bar separates home return from history drawer`() {
+    fun `child chat top bar keeps return action without history affordance`() {
         val layout = BrainyPalChildChatDrawerPolicy.layoutFor(childMode = true)
 
         assertEquals(BrainyPalChildChatTopStartAction.ReturnHome, layout.topStartAction)
-        assertTrue(layout.showTopBarHistoryAction)
+        assertFalse(layout.showTopBarHistoryAction)
         assertEquals("历史对话", layout.historyActionLabel)
     }
 
@@ -32,6 +33,7 @@ class BrainyPalChildChatDrawerPolicyTest {
     fun `standard drawer keeps existing RikkaHub navigation affordances`() {
         val layout = BrainyPalChildChatDrawerPolicy.layoutFor(childMode = false)
 
+        assertTrue(layout.mountConversationDrawer)
         assertTrue(layout.showConversationHistory)
         assertFalse(layout.showHomeReturnAction)
         assertFalse(layout.showFooterHomeShortcut)

@@ -15,11 +15,18 @@ data class BrainyPalChildWorkbench(
     val connectionStatus: String,
     val chatAction: BrainyPalChildWorkbenchAction,
     val practiceAction: BrainyPalChildWorkbenchAction,
+    val actionablePracticeCount: Int,
     val practiceSummary: String,
     val showReviewOffer: Boolean,
     val reviewMessage: String,
     val reviewAction: BrainyPalChildWorkbenchAction,
 ) {
+    val primaryAction: BrainyPalChildWorkbenchAction
+        get() = if (actionablePracticeCount > 0) practiceAction else chatAction
+
+    val secondaryAction: BrainyPalChildWorkbenchAction
+        get() = if (actionablePracticeCount > 0) chatAction else practiceAction
+
     companion object {
         fun from(
             connection: BrainyPalChildConnectionConfig,
@@ -29,6 +36,7 @@ data class BrainyPalChildWorkbench(
         ): BrainyPalChildWorkbench {
             val configured = connection.isConfigured()
             val actionableReviewOffer = reviewOffer?.takeIf { it.isActionable }
+            val actionablePracticeCount = practiceTasks.count(BrainyPalPracticeTaskOrdering::isActionable)
             return BrainyPalChildWorkbench(
                 configured = configured,
                 connectionStatus = if (configured) {
@@ -44,6 +52,7 @@ data class BrainyPalChildWorkbench(
                     label = if (configured) practiceTasks.primaryPracticeActionLabel() else "配置连接",
                     target = if (configured) Screen.BrainyPalPractice else Screen.BrainyPalConnection,
                 ),
+                actionablePracticeCount = actionablePracticeCount,
                 practiceSummary = practiceTasks.summaryText(),
                 showReviewOffer = actionableReviewOffer != null,
                 reviewMessage = actionableReviewOffer?.childMessage.orEmpty(),

@@ -97,7 +97,6 @@ import me.rerere.hugeicons.stroke.ArrowUp02
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.FullScreen
 import me.rerere.hugeicons.stroke.Zap
-import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.datastore.Settings
@@ -143,6 +142,7 @@ fun ChatInput(
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
+    restrictedMode: Boolean = false,
 ) {
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
@@ -382,7 +382,8 @@ fun ChatInput(
 
                     TextInputRow(
                         state = state,
-                        onSendMessage = { sendMessage() }
+                        restrictedMode = restrictedMode,
+                        onSendMessage = { sendMessage() },
                     )
 
                     Row(
@@ -398,7 +399,7 @@ fun ChatInput(
                                 .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            if (!BuildConfig.BRAINYPAL_CHILD_MODE) {
+                            if (!restrictedMode) {
                                 // Model Picker
                                 ModelSelector(
                                     modelId = assistant.chatModelId ?: settings.chatModelId,
@@ -450,7 +451,7 @@ fun ChatInput(
 
                         }
 
-                        if (!BuildConfig.BRAINYPAL_CHILD_MODE) {
+                        if (!restrictedMode) {
                             ActionIconButton(
                                 onClick = {
                                     showFilesSheet = true
@@ -548,7 +549,7 @@ fun ChatInput(
         }
     }
 
-    if (showFilesSheet) {
+    if (showFilesSheet && !restrictedMode) {
         ModalBottomSheet(
             onDismissRequest = { dismissExpand() },
         ) {
@@ -598,6 +599,7 @@ private fun ActionIconButton(
 @Composable
 private fun TextInputRow(
     state: ChatInputState,
+    restrictedMode: Boolean,
     onSendMessage: () -> Unit,
 ) {
     val settings = LocalSettings.current
@@ -682,7 +684,7 @@ private fun TextInputRow(
             shape = MaterialTheme.shapes.largeIncreased,
             placeholder = {
                 Text(
-                    if (BuildConfig.BRAINYPAL_CHILD_MODE) {
+                    if (restrictedMode) {
                         "说说你想问什么，或者哪一步卡住了"
                     } else {
                         stringResource(R.string.chat_input_placeholder)
