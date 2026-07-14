@@ -1,14 +1,18 @@
 package me.rerere.rikkahub.brainypal.child
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildApiFactory
 import me.rerere.rikkahub.brainypal.child.BrainyPalChildHomeState
@@ -28,6 +32,7 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalVoiceCommandInterpreter
 import me.rerere.rikkahub.brainypal.shared.BrainyPalVoiceControlState
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.utils.UiState
+import retrofit2.HttpException
 import kotlin.uuid.Uuid
 
 data class BrainyPalPracticeTaskActionStatus(
@@ -42,6 +47,7 @@ data class BrainyPalPracticeTaskHelpHint(
 
 data class BrainyPalPracticeTaskDetailState(
     val selectedTaskId: String? = null,
+    val selectedItemIndex: Int = 0,
     val detail: UiState<BrainyPalChildPracticeTaskDetail> = UiState.Idle,
     val drafts: BrainyPalPracticeDrafts = BrainyPalPracticeDrafts(),
     val helpHint: BrainyPalPracticeTaskHelpHint? = null,
@@ -54,11 +60,20 @@ class BrainyPalHomeVM(
     private val settingsStore: SettingsStore,
     private val apiFactory: BrainyPalChildApiFactory,
     private val voiceApiFactory: BrainyPalVoiceApiFactory,
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     private val chatScreen = Screen.Chat(id = Uuid.random().toString())
     private val _state = MutableStateFlow<UiState<BrainyPalChildHomeState>>(UiState.Loading)
     val state: StateFlow<UiState<BrainyPalChildHomeState>> = _state.asStateFlow()
-    private val _practiceDetailState = MutableStateFlow(BrainyPalPracticeTaskDetailState())
+    private val _practiceDetailState = MutableStateFlow(
+        BrainyPalPracticeTaskDetailState(
+            selectedTaskId = savedStateHandle[KEY_SELECTED_TASK],
+            selectedItemIndex = savedStateHandle[KEY_SELECTED_ITEM_INDEX] ?: 0,
+            drafts = savedStateHandle.get<String>(KEY_DRAFTS)
+                ?.let { runCatching { Json.decodeFromString<BrainyPalPracticeDrafts>(it) }.getOrNull() }
+                ?: BrainyPalPracticeDrafts(),
+        )
+    )
     val practiceDetailState: StateFlow<BrainyPalPracticeTaskDetailState> = _practiceDetailState.asStateFlow()
     private val _stationState = MutableStateFlow<UiState<BrainyPalAchievementStationResponse>>(UiState.Idle)
     val stationState: StateFlow<UiState<BrainyPalAchievementStationResponse>> = _stationState.asStateFlow()
@@ -74,6 +89,10 @@ class BrainyPalHomeVM(
                     _state.value = UiState.Success(state)
                 }
         }
+        viewModelScope.launch {
+            _practiceDetailState.drop(1).collect(::persistPracticeState)
+        }
+        _practiceDetailState.value.selectedTaskId?.let(::selectPracticeTask)
     }
 
     fun refresh() {
@@ -109,11 +128,18 @@ class BrainyPalHomeVM(
     }
 
     fun selectPracticeTask(taskId: String) {
+        val current = _practiceDetailState.value
+        val preserveDrafts = savedStateHandle.get<String>(KEY_RETAINED_TASK) == taskId
+        _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
+            selectedTaskId = taskId,
+            selectedItemIndex = if (preserveDrafts) current.selectedItemIndex else 0,
+            detail = UiState.Loading,
+            drafts = if (preserveDrafts) current.drafts else BrainyPalPracticeDrafts(),
+            handoffDisplay = if (preserveDrafts) current.handoffDisplay else null,
+        )
+        savedStateHandle[KEY_RETAINED_TASK] = taskId
+        persistPracticeState(_practiceDetailState.value)
         viewModelScope.launch {
-            _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
-                selectedTaskId = taskId,
-                detail = UiState.Loading,
-            )
             runCatching {
                 val api = practiceApi()
                 val detail = api.getPracticeTask(taskId)
@@ -123,18 +149,21 @@ class BrainyPalHomeVM(
                     detail
                 }
             }.onSuccess { detail ->
-                _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
-                    selectedTaskId = taskId,
+                if (!isSelectedPracticeTask(taskId)) return@onSuccess
+                val activeState = _practiceDetailState.value
+                _practiceDetailState.value = activeState.copy(
                     detail = UiState.Success(detail),
-                    drafts = BrainyPalPracticeDrafts().replaceFromDetail(detail),
+                    drafts = activeState.drafts.replaceFromDetail(detail),
+                    selectedItemIndex = activeState.selectedItemIndex
+                        .coerceIn(0, (detail.items.size - 1).coerceAtLeast(0)),
                 )
                 refresh()
             }.onFailure { error ->
                 if (error is CancellationException) {
                     throw error
                 }
-                _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
-                    selectedTaskId = taskId,
+                if (!isSelectedPracticeTask(taskId)) return@onFailure
+                _practiceDetailState.value = _practiceDetailState.value.copy(
                     detail = UiState.Error(error),
                     actionStatus = BrainyPalPracticeTaskActionStatus(
                         message = "暂时连不上 BrainyPal，可以稍后再试",
@@ -146,10 +175,28 @@ class BrainyPalHomeVM(
     }
 
     fun closePracticeTask() {
-        _practiceDetailState.value = BrainyPalPracticeTaskDetailState()
+        _practiceDetailState.value = _practiceDetailState.value.copy(
+            selectedTaskId = null,
+            detail = UiState.Idle,
+            helpHint = null,
+            handoffDisplay = null,
+            actionInProgress = false,
+            actionStatus = null,
+        )
+        persistPracticeState(_practiceDetailState.value)
+    }
+
+    fun selectPracticeItem(index: Int) {
+        val detail = (_practiceDetailState.value.detail as? UiState.Success)?.data ?: return
+        _practiceDetailState.value = _practiceDetailState.value.copy(
+            selectedItemIndex = index.coerceIn(0, (detail.items.size - 1).coerceAtLeast(0)),
+            actionStatus = null,
+        )
+        persistPracticeState(_practiceDetailState.value)
     }
 
     fun savePracticeAnswer(taskId: String, itemId: String, answer: String, evidence: String) {
+        if (!isSelectedPracticeTask(taskId)) return
         updatePracticeDraft(itemId = itemId, answer = answer, evidence = evidence)
         val attemptSessionId = currentPracticeAttemptSessionId()
         updatePracticeTask(
@@ -184,10 +231,14 @@ class BrainyPalHomeVM(
                 evidence = evidence,
             )
         )
+        persistPracticeState(_practiceDetailState.value)
     }
 
     fun requestPracticeHelp(taskId: String, itemId: String, requestedAction: String = "hint") {
+        if (!isSelectedPracticeTask(taskId)) return
+        val attemptSessionId = currentPracticeAttemptSessionId()
         viewModelScope.launch {
+            if (!isSelectedPracticeTask(taskId)) return@launch
             val previousHint = _practiceDetailState.value.helpHint
             val previousDrafts = _practiceDetailState.value.drafts
             _practiceDetailState.value = _practiceDetailState.value.copy(
@@ -206,22 +257,22 @@ class BrainyPalHomeVM(
                 val hint = api.requestPracticeTaskHelp(
                     taskId = taskId,
                     request = BrainyPalRequestPracticeTaskHelpRequest(
-                        attemptSessionId = currentPracticeAttemptSessionId().orEmpty(),
+                        attemptSessionId = attemptSessionId.orEmpty(),
                         itemId = itemId,
                         requestedAction = requestedAction,
                     ),
                 )
                 hint to api.getPracticeTask(taskId)
             }.onSuccess { (hint, detail) ->
-                _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
-                    selectedTaskId = taskId,
+                if (!isSelectedPracticeTask(taskId)) return@onSuccess
+                _practiceDetailState.value = _practiceDetailState.value.copy(
                     detail = UiState.Success(detail),
                     drafts = previousDrafts.replaceFromDetail(detail),
                     helpHint = BrainyPalPracticeTaskHelpHint(
                         itemId = hint.itemId,
                         message = hint.hint.ifBlank { hint.waitingLabel },
                     ),
-                    handoffDisplay = _practiceDetailState.value.handoffDisplay,
+                    actionInProgress = false,
                     actionStatus = BrainyPalPracticeTaskActionStatus(
                         message = BrainyPalPracticeActionFeedback.HELP_SUCCESS_MESSAGE,
                     ),
@@ -231,12 +282,17 @@ class BrainyPalHomeVM(
                 if (error is CancellationException) {
                     throw error
                 }
+                if (!isSelectedPracticeTask(taskId)) return@onFailure
+                val helpExhausted = error is HttpException && error.code() == 409
                 _practiceDetailState.value = _practiceDetailState.value.copy(
-                    selectedTaskId = taskId,
                     actionInProgress = false,
                     helpHint = previousHint,
                     actionStatus = BrainyPalPracticeTaskActionStatus(
-                        message = "暂时连不上 BrainyPal，可以稍后再试",
+                        message = if (helpExhausted) {
+                            "提示次数已经用完，可以先写下已知条件或卡住的地方。"
+                        } else {
+                            "暂时连不上 BrainyPal，可以稍后再试"
+                        },
                         error = true,
                     ),
                 )
@@ -245,7 +301,9 @@ class BrainyPalHomeVM(
     }
 
     fun createPracticeHandoffCode(taskId: String) {
+        if (!isSelectedPracticeTask(taskId)) return
         viewModelScope.launch {
+            if (!isSelectedPracticeTask(taskId)) return@launch
             val previous = _practiceDetailState.value
             _practiceDetailState.value = previous.copy(
                 selectedTaskId = taskId,
@@ -260,8 +318,8 @@ class BrainyPalHomeVM(
                     request = BrainyPalCreatePracticeHandoffCodeRequest(channel = "web"),
                 )
             }.onSuccess { handoff ->
+                if (!isSelectedPracticeTask(taskId)) return@onSuccess
                 _practiceDetailState.value = _practiceDetailState.value.copy(
-                    selectedTaskId = taskId,
                     handoffDisplay = BrainyPalPracticeExternalWork.handoffDisplay(handoff),
                     actionInProgress = false,
                     actionStatus = BrainyPalPracticeTaskActionStatus(
@@ -272,8 +330,8 @@ class BrainyPalHomeVM(
                 if (error is CancellationException) {
                     throw error
                 }
+                if (!isSelectedPracticeTask(taskId)) return@onFailure
                 _practiceDetailState.value = previous.copy(
-                    selectedTaskId = taskId,
                     actionInProgress = false,
                     actionStatus = BrainyPalPracticeTaskActionStatus(
                         message = "暂时生成不了电脑接力码，可以稍后再试",
@@ -290,6 +348,7 @@ class BrainyPalHomeVM(
             taskId = taskId,
             successMessage = "已提交练习",
             pendingMessage = BrainyPalPracticeActionFeedback.SUBMIT_PENDING_MESSAGE,
+            focusLowEffortOnResponse = true,
         ) {
             submitPracticeTask(
                 taskId = taskId,
@@ -382,12 +441,14 @@ class BrainyPalHomeVM(
         pendingMessage: String? = null,
         savedAnswer: SavedPracticeAnswer? = null,
         helpItemId: String? = null,
+        focusLowEffortOnResponse: Boolean = false,
         action: suspend me.rerere.rikkahub.brainypal.shared.BrainyPalChildApi.() -> BrainyPalChildPracticeTaskDetail,
     ) {
+        if (!isSelectedPracticeTask(taskId)) return
         viewModelScope.launch {
+            if (!isSelectedPracticeTask(taskId)) return@launch
             val previousHint = _practiceDetailState.value.helpHint
             _practiceDetailState.value = _practiceDetailState.value.copy(
-                selectedTaskId = taskId,
                 actionInProgress = true,
                 helpHint = BrainyPalPracticeActionFeedback.pendingHelpHintFor(
                     helpItemId = helpItemId,
@@ -398,6 +459,7 @@ class BrainyPalHomeVM(
             runCatching {
                 practiceApi().action()
             }.onSuccess { detail ->
+                if (!isSelectedPracticeTask(taskId)) return@onSuccess
                 val currentDrafts = savedAnswer
                     ?.let {
                         _practiceDetailState.value.drafts.markSaved(
@@ -423,12 +485,18 @@ class BrainyPalHomeVM(
                     helpItemId = helpItemId,
                     helpMessage = detail.helpMessage,
                 )
-                _practiceDetailState.value = BrainyPalPracticeTaskDetailState(
-                    selectedTaskId = taskId,
+                val selectedItemIndex = if (focusLowEffortOnResponse && detail.needsMoreEffort) {
+                    detail.items.indexOfFirst { it.needsMoreEffort }.takeIf { it >= 0 }
+                        ?: _practiceDetailState.value.selectedItemIndex
+                } else {
+                    _practiceDetailState.value.selectedItemIndex
+                }
+                _practiceDetailState.value = _practiceDetailState.value.copy(
                     detail = UiState.Success(detail),
                     drafts = currentDrafts.replaceFromDetail(detail),
                     helpHint = helpHint,
-                    handoffDisplay = _practiceDetailState.value.handoffDisplay,
+                    selectedItemIndex = selectedItemIndex,
+                    actionInProgress = false,
                     actionStatus = actionStatus,
                 )
                 refresh()
@@ -436,8 +504,8 @@ class BrainyPalHomeVM(
                 if (error is CancellationException) {
                     throw error
                 }
+                if (!isSelectedPracticeTask(taskId)) return@onFailure
                 _practiceDetailState.value = _practiceDetailState.value.copy(
-                    selectedTaskId = taskId,
                     actionInProgress = false,
                     helpHint = if (helpItemId != null) previousHint else _practiceDetailState.value.helpHint,
                     actionStatus = BrainyPalPracticeTaskActionStatus(
@@ -465,6 +533,23 @@ class BrainyPalHomeVM(
             is UiState.Success -> detail.data.attemptSessionId
             else -> null
         }
+    }
+
+    private fun isSelectedPracticeTask(taskId: String): Boolean {
+        return _practiceDetailState.value.selectedTaskId == taskId
+    }
+
+    private fun persistPracticeState(state: BrainyPalPracticeTaskDetailState) {
+        savedStateHandle[KEY_SELECTED_TASK] = state.selectedTaskId
+        savedStateHandle[KEY_SELECTED_ITEM_INDEX] = state.selectedItemIndex
+        savedStateHandle[KEY_DRAFTS] = Json.encodeToString(state.drafts)
+    }
+
+    private companion object {
+        const val KEY_SELECTED_TASK = "brainypal.practice.selectedTask"
+        const val KEY_RETAINED_TASK = "brainypal.practice.retainedTask"
+        const val KEY_SELECTED_ITEM_INDEX = "brainypal.practice.selectedItemIndex"
+        const val KEY_DRAFTS = "brainypal.practice.drafts"
     }
 }
 

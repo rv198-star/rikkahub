@@ -139,9 +139,10 @@ fun BrainyPalConnectionPage(
     val savedPin = settings.brainyPalManagementPin
     val gate = remember(savedPin?.hash) { BrainyPalPinAttemptGate() }
 
-    var unlocked by remember(savedPin?.hash) { mutableStateOf(savedPin == null) }
+    var unlocked by remember { mutableStateOf(false) }
     var pinCandidate by remember(savedPin?.hash) { mutableStateOf("") }
     var newPin by remember(savedPin?.hash) { mutableStateOf("") }
+    var pendingPin by remember { mutableStateOf<BrainyPalManagementPin?>(null) }
     var baseUrl by remember(settings.brainyPalChildConnection.baseUrl) {
         mutableStateOf(settings.brainyPalChildConnection.baseUrl)
     }
@@ -443,7 +444,7 @@ fun BrainyPalConnectionPage(
             contentPadding = innerPadding + PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            if (!unlocked && savedPin != null) {
+            if (!unlocked) {
                 item {
                     Card {
                         Column(
@@ -457,20 +458,39 @@ fun BrainyPalConnectionPage(
                                 contentDescription = null,
                                 tint = BrainyPalChildTheme.amberText,
                             )
-                            Text("输入家长 PIN", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                text = "这里保护家长工作台、作业下发和孩子任务状态。",
+                                if (savedPin == null) "先创建家长 PIN" else "输入家长 PIN",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                text = if (savedPin == null) {
+                                    "PIN 用来保护家长工作台、连接地址和密钥，至少 4 位。"
+                                } else {
+                                    "通过验证后才能查看或修改连接信息。"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            OutlinedTextField(
-                                value = pinCandidate,
-                                onValueChange = { pinCandidate = it },
-                                label = { Text("家长 PIN") },
-                                singleLine = true,
-                                visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                            if (savedPin == null) {
+                                OutlinedTextField(
+                                    value = newPin,
+                                    onValueChange = { newPin = it },
+                                    label = { Text("创建家长 PIN") },
+                                    singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            } else {
+                                OutlinedTextField(
+                                    value = pinCandidate,
+                                    onValueChange = { pinCandidate = it },
+                                    label = { Text("家长 PIN") },
+                                    singleLine = true,
+                                    visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                             Button(
                                 modifier = Modifier
@@ -478,6 +498,16 @@ fun BrainyPalConnectionPage(
                                     .heightIn(min = 48.dp),
                                 onClick = {
                                     when {
+                                        savedPin == null && newPin.length < 4 -> {
+                                            message = "请设置至少 4 位家长 PIN"
+                                        }
+
+                                        savedPin == null -> {
+                                            pendingPin = BrainyPalChildModePolicy.createManagementPin(newPin)
+                                            unlocked = true
+                                            message = null
+                                        }
+
                                         gate.isCoolingDown() -> {
                                             message = "PIN 尝试过多，请稍后再试"
                                         }
@@ -493,7 +523,7 @@ fun BrainyPalConnectionPage(
                                     }
                                 }
                             ) {
-                                Text("解锁")
+                                Text(if (savedPin == null) "继续设置连接" else "进入工作台")
                             }
                         }
                     }
@@ -556,7 +586,7 @@ fun BrainyPalConnectionPage(
                 if (showConnectionSettings || !configured) {
                     item {
                         ParentConnectionSettingsCard(
-                            savedPin = savedPin,
+                            savedPin = savedPin ?: pendingPin,
                             baseUrl = baseUrl,
                             apiKey = apiKey,
                             newPin = newPin,
@@ -569,16 +599,14 @@ fun BrainyPalConnectionPage(
                                     baseUrl = baseUrl.trim(),
                                     apiKey = apiKey,
                                 )
-                                val pin = savedPin ?: newPin
-                                    .takeIf { it.length >= 4 }
-                                    ?.let(BrainyPalChildModePolicy::createManagementPin)
+                                val pin = savedPin ?: pendingPin
 
                                 if (!config.isConfigured()) {
                                     message = "请填写 Base URL 和 API Key"
                                     return@ParentConnectionSettingsCard
                                 }
                                 if (pin == null) {
-                                    message = "请设置至少 4 位管理 PIN"
+                                    message = "请先创建家长 PIN"
                                     return@ParentConnectionSettingsCard
                                 }
 
@@ -595,10 +623,12 @@ fun BrainyPalConnectionPage(
                             connection = settings.brainyPalChildConnection,
                             showSettings = showConnectionSettings,
                             onSettings = { showConnectionSettings = true },
-                            onLock = if (savedPin != null) {
+                            onLock = if (savedPin != null || pendingPin != null) {
                                 {
                                     unlocked = false
                                     pinCandidate = ""
+                                    newPin = ""
+                                    pendingPin = null
                                     message = null
                                 }
                             } else {

@@ -52,6 +52,8 @@ class BrainyPalChildWorkbenchTest {
         assertEquals("开始下一件事", workbench.practiceAction.label)
         assertEquals(Screen.BrainyPalPractice, workbench.practiceAction.target)
         assertEquals("1 个任务等你开始", workbench.practiceSummary)
+        assertEquals(Screen.BrainyPalPractice, workbench.primaryAction.target)
+        assertEquals(Screen.Chat("chat-id"), workbench.secondaryAction.target)
     }
 
     @Test
@@ -142,6 +144,34 @@ class BrainyPalChildWorkbenchTest {
     }
 
     @Test
+    fun `submitted only tasks keep chat as the primary action`() {
+        val chat = Screen.Chat("chat-id")
+        val workbench = BrainyPalChildWorkbench.from(
+            connection = BrainyPalChildConnectionConfig(
+                baseUrl = "http://192.168.1.20:8000/rikka/v1",
+                apiKey = "brainypal-local",
+            ),
+            practiceTasks = listOf(
+                BrainyPalChildPracticeTaskSummary(
+                    taskId = "task-submitted",
+                    title = "等反馈",
+                    taskType = "wrong_question_practice",
+                    status = "submitted",
+                    itemCount = 1,
+                    helpLimit = 3,
+                    helpUsed = 0,
+                )
+            ),
+            reviewOffer = null,
+            chatScreen = chat,
+        )
+
+        assertEquals(0, workbench.actionablePracticeCount)
+        assertEquals(chat, workbench.primaryAction.target)
+        assertEquals(Screen.BrainyPalPractice, workbench.secondaryAction.target)
+    }
+
+    @Test
     fun `task action labels follow task status`() {
         fun task(status: String) = BrainyPalChildPracticeTaskSummary(
             taskId = "task-$status",
@@ -186,5 +216,6 @@ class BrainyPalChildWorkbenchTest {
         assertEquals("要不要试一小步？", workbench.reviewMessage)
         assertEquals("复习一下", workbench.reviewAction.label)
         assertEquals(Screen.BrainyPalPractice, workbench.reviewAction.target)
+        assertEquals(Screen.Chat("chat-id"), workbench.primaryAction.target)
     }
 }

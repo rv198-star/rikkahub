@@ -50,14 +50,14 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Home03
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
-import me.rerere.hugeicons.stroke.TransactionHistory
 import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.brainypal.child.BrainyPalChildChatDrawerPolicy
-import me.rerere.rikkahub.brainypal.child.BrainyPalChildChatTopStartAction
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
@@ -151,6 +151,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     }
 
     val chatListState = rememberLazyListState()
+    val childMode = BuildConfig.BRAINYPAL_CHILD_MODE
+    val childChatLayout = BrainyPalChildChatDrawerPolicy.layoutFor(childMode)
     LaunchedEffect(nodeId, conversation.messageNodes.size) {
         if (!vm.chatListInitialized && conversation.messageNodes.isNotEmpty()) {
             if (nodeId != null) {
@@ -166,6 +168,28 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     }
 
     when {
+        !childChatLayout.mountConversationDrawer -> {
+            ChatPageContent(
+                inputState = inputState,
+                loadingJob = loadingJob,
+                processingStatus = processingStatus,
+                setting = setting,
+                conversation = conversation,
+                drawerState = drawerState,
+                navController = navController,
+                vm = vm,
+                chatListState = chatListState,
+                enableWebSearch = false,
+                currentChatModel = currentChatModel,
+                bigScreen = false,
+                errors = errors,
+                restrictedMode = true,
+                hasPracticeContext = text != null,
+                onDismissError = { vm.dismissError(it) },
+                onClearAllErrors = { vm.clearAllErrors() },
+            )
+        }
+
         isBigScreen -> {
             PermanentNavigationDrawer(
                 drawerContent = {
@@ -191,6 +215,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     currentChatModel = currentChatModel,
                     bigScreen = true,
                     errors = errors,
+                    restrictedMode = false,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                 )
@@ -223,6 +248,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     currentChatModel = currentChatModel,
                     bigScreen = false,
                     errors = errors,
+                    restrictedMode = false,
                     onDismissError = { vm.dismissError(it) },
                     onClearAllErrors = { vm.clearAllErrors() },
                 )
@@ -249,6 +275,8 @@ private fun ChatPageContent(
     enableWebSearch: Boolean,
     currentChatModel: Model?,
     errors: List<ChatError>,
+    restrictedMode: Boolean,
+    hasPracticeContext: Boolean = false,
     onDismissError: (Uuid) -> Unit,
     onClearAllErrors: () -> Unit,
 ) {
@@ -266,23 +294,30 @@ private fun ChatPageContent(
         AssistantBackground(setting = setting, modifier = Modifier.hazeSource(hazeState))
         Scaffold(
             topBar = {
-                TopBar(
-                    settings = setting,
-                    conversation = conversation,
-                    bigScreen = bigScreen,
-                    drawerState = drawerState,
-                    navController = navController,
-                    previewMode = previewMode,
-                    onNewChat = {
-                        navigateToChatPage(navController)
-                    },
-                    onClickMenu = {
-                        previewMode = !previewMode
-                    },
-                    onUpdateTitle = {
-                        vm.updateTitle(it)
-                    }
-                )
+                if (restrictedMode) {
+                    BrainyPalChatTopBar(
+                        hasPracticeContext = hasPracticeContext,
+                        onBack = {
+                            if (hasPracticeContext) {
+                                navController.popBackStack()
+                            } else {
+                                navController.navigate(Screen.BrainyPalHome)
+                            }
+                        },
+                        onNewChat = { navigateToChatPage(navController) },
+                    )
+                } else {
+                    TopBar(
+                        settings = setting,
+                        conversation = conversation,
+                        bigScreen = bigScreen,
+                        drawerState = drawerState,
+                        previewMode = previewMode,
+                        onNewChat = { navigateToChatPage(navController) },
+                        onClickMenu = { previewMode = !previewMode },
+                        onUpdateTitle = { vm.updateTitle(it) },
+                    )
+                }
             },
             bottomBar = {
                 ChatInput(
@@ -301,7 +336,10 @@ private fun ChatPageContent(
                     },
                     onSendClick = {
                         if (currentChatModel == null) {
-                            toaster.show("请先选择模型", type = ToastType.Error)
+                            toaster.show(
+                                if (restrictedMode) "BrainyPal 暂时未准备好，请稍后再试" else "请先选择模型",
+                                type = ToastType.Error,
+                            )
                             return@ChatInput
                         }
                         if (inputState.isEditing()) {
@@ -331,6 +369,7 @@ private fun ChatPageContent(
                         }
                         inputState.clearInput()
                     },
+                    restrictedMode = restrictedMode,
                     onUpdateChatModel = {
                         vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
                     },
@@ -439,9 +478,44 @@ private fun ChatPageContent(
                     vm.updateConversation(conversation.copy(customSystemPrompt = newPrompt))
                     vm.saveConversationAsync()
                 },
+                restrictedMode = restrictedMode,
             )
         }
     }
+}
+
+@Composable
+private fun BrainyPalChatTopBar(
+    hasPracticeContext: Boolean,
+    onBack: () -> Unit,
+    onNewChat: () -> Unit,
+) {
+    TopAppBar(
+        colors = BrainyPalChildTheme.topAppBarColors(),
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = if (hasPracticeContext) HugeIcons.ArrowLeft01 else HugeIcons.Home03,
+                    contentDescription = if (hasPracticeContext) "返回当前练习" else "返回 BrainyPal 首页",
+                )
+            }
+        },
+        title = {
+            Column {
+                Text("问一问", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = if (hasPracticeContext) "正在讨论当前题目" else "对话只用于学习帮助",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = onNewChat) {
+                Icon(HugeIcons.MessageAdd01, contentDescription = "开始新对话")
+            }
+        },
+    )
 }
 
 @Composable
@@ -449,7 +523,6 @@ private fun TopBar(
     settings: Settings,
     conversation: Conversation,
     drawerState: DrawerState,
-    navController: Navigator,
     bigScreen: Boolean,
     previewMode: Boolean,
     onClickMenu: () -> Unit,
@@ -458,40 +531,20 @@ private fun TopBar(
 ) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
-    val childMode = BuildConfig.BRAINYPAL_CHILD_MODE
-    val childChatLayout = BrainyPalChildChatDrawerPolicy.layoutFor(childMode)
     val titleState = useEditState<String> {
         onUpdateTitle(it)
     }
 
     TopAppBar(
-        colors = if (childMode) {
-            BrainyPalChildTheme.topAppBarColors()
-        } else {
-            TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         navigationIcon = {
             if (!bigScreen) {
-                when (childChatLayout.topStartAction) {
-                    BrainyPalChildChatTopStartAction.OpenDrawer -> {
-                        IconButton(
-                            onClick = {
-                                scope.launch { drawerState.open() }
-                            }
-                        ) {
-                            Icon(HugeIcons.Menu03, "Messages")
-                        }
+                IconButton(
+                    onClick = {
+                        scope.launch { drawerState.open() }
                     }
-
-                    BrainyPalChildChatTopStartAction.ReturnHome -> {
-                        IconButton(
-                            onClick = {
-                                navController.navigate(childChatLayout.homeReturnTarget)
-                            }
-                        ) {
-                            Icon(HugeIcons.ArrowLeft01, childChatLayout.homeReturnLabel)
-                        }
-                    }
+                ) {
+                    Icon(HugeIcons.Menu03, "Messages")
                 }
             }
         },
@@ -499,9 +552,6 @@ private fun TopBar(
             val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
             Surface(
                 onClick = {
-                    if (childMode) {
-                        return@Surface
-                    }
                     if (conversation.messageNodes.isNotEmpty()) {
                         titleState.open(conversation.title)
                     } else {
@@ -515,28 +565,12 @@ private fun TopBar(
                     val model = settings.getCurrentChatModel()
                     val provider = model?.findProvider(providers = settings.providers, checkOverwrite = false)
                     Text(
-                        text = if (childMode) {
-                            conversation.title.ifBlank { "问问 BrainyPal" }
-                        } else {
-                            conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) }
-                        },
+                        text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
                         maxLines = 1,
-                        style = if (childMode) {
-                            MaterialTheme.typography.titleMedium
-                        } else {
-                            MaterialTheme.typography.bodyMedium
-                        },
+                        style = MaterialTheme.typography.bodyMedium,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (childMode) {
-                        Text(
-                            text = "先说你的想法，我会陪你一步步想",
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 1,
-                            color = LocalContentColor.current.copy(0.65f),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    } else if (model != null && provider != null) {
+                    if (model != null && provider != null) {
                         Text(
                             text = "${assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }} / ${model.displayName} (${provider.name})",
                             overflow = TextOverflow.Ellipsis,
@@ -551,24 +585,12 @@ private fun TopBar(
             }
         },
         actions = {
-            if (childChatLayout.showTopBarHistoryAction && !bigScreen) {
-                IconButton(
-                    onClick = {
-                        scope.launch { drawerState.open() }
-                    }
-                ) {
-                    Icon(HugeIcons.TransactionHistory, childChatLayout.historyActionLabel)
+            IconButton(
+                onClick = {
+                    onClickMenu()
                 }
-            }
-
-            if (!childMode) {
-                IconButton(
-                    onClick = {
-                        onClickMenu()
-                    }
-                ) {
-                    Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
-                }
+            ) {
+                Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
             }
 
             IconButton(
