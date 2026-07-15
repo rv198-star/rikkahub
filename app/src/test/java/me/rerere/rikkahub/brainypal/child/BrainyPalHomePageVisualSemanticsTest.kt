@@ -2,6 +2,7 @@ package me.rerere.rikkahub.brainypal.child
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrainyPalHomePageVisualSemanticsTest {
@@ -35,5 +36,6 @@ class BrainyPalHomePageVisualSemanticsTest {
         val semantics = BrainyPalHomePageVisualSemantics.default
 
         assertFalse(semantics.showBackNavigation)
+        assertTrue(semantics.showParentEntry)
     }
 }

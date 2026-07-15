@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
+import me.rerere.hugeicons.stroke.Lock
 import me.rerere.hugeicons.stroke.Refresh03
 import me.rerere.hugeicons.stroke.Sparkles
 import me.rerere.rikkahub.Screen
@@ -61,6 +62,7 @@ data class BrainyPalHomeVisualSemantics(
     val maxPreviewTasks: Int,
     val childSafeText: String,
     val showBackNavigation: Boolean,
+    val showParentEntry: Boolean,
 )
 
 object BrainyPalHomePageVisualSemantics {
@@ -82,6 +84,7 @@ object BrainyPalHomePageVisualSemantics {
         childSafeText = "今天先从一个小问题开始。" +
             "${BrainyPalTokens.stationFullName}记录愿意开始、说出卡点和提示后再试的小信号。",
         showBackNavigation = false,
+        showParentEntry = true,
     )
 }
 
@@ -121,6 +124,11 @@ fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     }
                 },
                 actions = {
+                    if (visualSemantics.showParentEntry) {
+                        IconButton(onClick = { navController.navigate(Screen.BrainyPalConnection) }) {
+                            Icon(HugeIcons.Lock, contentDescription = "家长入口")
+                        }
+                    }
                     IconButton(onClick = vm::refresh) {
                         Icon(HugeIcons.Refresh03, null)
                     }
