@@ -17,6 +17,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: web-ui/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web-ui
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
       - name: Create non-secret debug Google Services config
