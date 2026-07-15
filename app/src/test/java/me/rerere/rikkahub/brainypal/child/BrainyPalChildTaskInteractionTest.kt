@@ -83,9 +83,10 @@ class BrainyPalChildTaskInteractionTest {
 
         assertEquals("背诵任务", plan.kindLabel)
         assertEquals("开始背诵", plan.primaryActionLabel)
-        assertEquals("背完后写一句自评", plan.answerLabel)
-        assertEquals("哪里卡住了，或拍照/录音留证据", plan.evidenceLabel)
-        assertTrue(plan.brief.contains("先听一遍"))
+        assertEquals("给自己 1-5 分", plan.answerLabel)
+        assertEquals("哪里卡住了", plan.evidenceLabel)
+        assertTrue(plan.brief.contains("先看一遍"))
+        assertFalse(plan.brief.contains("填一个 1-5 分自评"))
         assertEquals(emptyList<Pair<String, String>>(), plan.quickActions)
         assertTrue(plan.usesDedicatedFlow)
     }

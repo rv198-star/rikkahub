@@ -4,6 +4,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.brainypal.shared.*
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -177,6 +179,14 @@ class BrainyPalChildHomeStateTest {
             error("dictation OCR evidence should not be submitted by home state")
         }
 
+        override suspend fun uploadOralAudio(
+            taskId: String,
+            itemId: RequestBody,
+            file: MultipartBody.Part,
+        ): BrainyPalOralAudioUploadResponse {
+            error("oral audio should not be uploaded by home state")
+        }
+
         override suspend fun submitOralEvidence(
             taskId: String,
             request: BrainyPalSubmitOralEvidenceRequest,
@@ -251,6 +261,14 @@ class BrainyPalChildHomeStateTest {
             request: BrainyPalSubmitDictationOcrEvidenceRequest,
         ): BrainyPalChildPracticeTaskDetail {
             error("dictation OCR evidence should not be submitted by home state")
+        }
+
+        override suspend fun uploadOralAudio(
+            taskId: String,
+            itemId: RequestBody,
+            file: MultipartBody.Part,
+        ): BrainyPalOralAudioUploadResponse {
+            error("oral audio should not be uploaded by home state")
         }
 
         override suspend fun submitOralEvidence(

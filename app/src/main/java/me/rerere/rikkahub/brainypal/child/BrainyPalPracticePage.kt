@@ -1,7 +1,9 @@
 package me.rerere.rikkahub.brainypal.child
 
 import android.content.Context
+import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -40,10 +42,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -170,6 +174,7 @@ fun BrainyPalPracticePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     onCreateHandoffCode = vm::createPracticeHandoffCode,
                     onSubmitTask = vm::submitPracticeTask,
                     onSubmitOcrEvidence = vm::submitDictationOcrEvidence,
+                    onUploadOralAudio = vm::uploadOralAudio,
                     onSubmitOralEvidence = vm::submitOralEvidence,
                     onConfirmOcrEvidence = vm::confirmDictationOcrEvidence,
                     onInterpretVoiceCommand = vm::interpretVoiceCommand,
@@ -192,6 +197,7 @@ fun BrainyPalPracticePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     onCreateHandoffCode = vm::createPracticeHandoffCode,
                     onSubmitTask = vm::submitPracticeTask,
                     onSubmitOcrEvidence = vm::submitDictationOcrEvidence,
+                    onUploadOralAudio = vm::uploadOralAudio,
                     onSubmitOralEvidence = vm::submitOralEvidence,
                     onConfirmOcrEvidence = vm::confirmDictationOcrEvidence,
                     onInterpretVoiceCommand = vm::interpretVoiceCommand,
@@ -217,6 +223,7 @@ private fun BrainyPalPracticeContent(
     onCreateHandoffCode: (String) -> Unit,
     onSubmitTask: (String) -> Unit,
     onSubmitOcrEvidence: (String, BrainyPalSubmitDictationOcrEvidenceRequest) -> Unit,
+    onUploadOralAudio: (String, String, File) -> Unit,
     onSubmitOralEvidence: (String, BrainyPalSubmitOralEvidenceRequest) -> Unit,
     onConfirmOcrEvidence: (String, String, String, String?) -> Unit,
     onInterpretVoiceCommand: suspend (String, String, BrainyPalVoiceAction, Boolean) -> BrainyPalVoiceControlState,
@@ -328,6 +335,7 @@ private fun BrainyPalPracticeContent(
                     onCreateHandoffCode = onCreateHandoffCode,
                     onSubmitTask = onSubmitTask,
                     onSubmitOcrEvidence = onSubmitOcrEvidence,
+                    onUploadOralAudio = onUploadOralAudio,
                     onSubmitOralEvidence = onSubmitOralEvidence,
                     onConfirmOcrEvidence = onConfirmOcrEvidence,
                     onInterpretVoiceCommand = onInterpretVoiceCommand,
@@ -365,6 +373,7 @@ private fun PracticeTaskDetailPane(
     onCreateHandoffCode: (String) -> Unit,
     onSubmitTask: (String) -> Unit,
     onSubmitOcrEvidence: (String, BrainyPalSubmitDictationOcrEvidenceRequest) -> Unit,
+    onUploadOralAudio: (String, String, File) -> Unit,
     onSubmitOralEvidence: (String, BrainyPalSubmitOralEvidenceRequest) -> Unit,
     onConfirmOcrEvidence: (String, String, String, String?) -> Unit,
     onInterpretVoiceCommand: suspend (String, String, BrainyPalVoiceAction, Boolean) -> BrainyPalVoiceControlState,
@@ -401,6 +410,7 @@ private fun PracticeTaskDetailPane(
                 drafts = detailState.drafts,
                 helpHint = detailState.helpHint,
                 handoffDisplay = detailState.handoffDisplay,
+                oralAudioRefs = detailState.oralAudioRefs,
                 actionInProgress = detailState.actionInProgress,
                 actionStatus = detailState.actionStatus,
                 onClose = onClose,
@@ -411,6 +421,7 @@ private fun PracticeTaskDetailPane(
                 onCreateHandoffCode = onCreateHandoffCode,
                 onSubmitTask = onSubmitTask,
                 onSubmitOcrEvidence = onSubmitOcrEvidence,
+                onUploadOralAudio = onUploadOralAudio,
                 onSubmitOralEvidence = onSubmitOralEvidence,
                 onConfirmOcrEvidence = onConfirmOcrEvidence,
                 onInterpretVoiceCommand = onInterpretVoiceCommand,
@@ -426,6 +437,7 @@ private fun PracticeTaskDetailContent(
     drafts: BrainyPalPracticeDrafts,
     helpHint: BrainyPalPracticeTaskHelpHint?,
     handoffDisplay: BrainyPalPracticeHandoffDisplay?,
+    oralAudioRefs: Map<String, String>,
     actionInProgress: Boolean,
     actionStatus: BrainyPalPracticeTaskActionStatus?,
     onClose: () -> Unit,
@@ -436,6 +448,7 @@ private fun PracticeTaskDetailContent(
     onCreateHandoffCode: (String) -> Unit,
     onSubmitTask: (String) -> Unit,
     onSubmitOcrEvidence: (String, BrainyPalSubmitDictationOcrEvidenceRequest) -> Unit,
+    onUploadOralAudio: (String, String, File) -> Unit,
     onSubmitOralEvidence: (String, BrainyPalSubmitOralEvidenceRequest) -> Unit,
     onConfirmOcrEvidence: (String, String, String, String?) -> Unit,
     onInterpretVoiceCommand: suspend (String, String, BrainyPalVoiceAction, Boolean) -> BrainyPalVoiceControlState,
@@ -457,8 +470,10 @@ private fun PracticeTaskDetailContent(
     var dictationPlaybackCountdown by remember(detail.taskId) {
         mutableStateOf<BrainyPalDictationPlaybackCountdown?>(null)
     }
-    if (isDictation) {
+    if (isDictation || isOralTask) {
         PermissionManager(permissionState = asrPermission)
+    }
+    if (isDictation) {
         PermissionManager(permissionState = cameraPermission)
     }
     var dictationSession by remember(detail.taskId, detail.items.map { it.itemId }) {
@@ -476,9 +491,17 @@ private fun PracticeTaskDetailContent(
         mutableStateOf("写完后拍照，BrainyPal 会先识别，再让你确认不确定的地方。")
     }
     var recitationMessage by remember(detail.taskId) {
-        mutableStateOf("先听一遍材料，再自己背一小段；卡住了也可以标记出来。")
+        mutableStateOf("先看一遍，再试一句。")
     }
     var oralRereadCount by remember(detail.taskId) { mutableStateOf(0) }
+    var oralPhase by remember(detail.taskId) { mutableStateOf(BrainyPalOralTaskPhase.Reading) }
+    var oralSentenceIndex by remember(detail.taskId) { mutableStateOf(0) }
+    var oralSentenceRevealed by remember(detail.taskId) { mutableStateOf(false) }
+    var oralSourcePeek by remember(detail.taskId) { mutableStateOf(false) }
+    var oralReflectionUnlocked by remember(detail.taskId) { mutableStateOf(false) }
+    var oralRecorder by remember(detail.taskId) { mutableStateOf<MediaRecorder?>(null) }
+    var oralRecordingFile by remember(detail.taskId) { mutableStateOf<File?>(null) }
+    var oralRecording by remember(detail.taskId) { mutableStateOf(false) }
     var taskVoiceMessage by remember(detail.taskId) {
         mutableStateOf("可以说“给我提示”“再说一遍”“不会”“暂停”“继续”。")
     }
@@ -515,6 +538,13 @@ private fun PracticeTaskDetailContent(
                 onProgress = { ocrInProgress = it },
                 onSubmitOcrEvidence = onSubmitOcrEvidence,
             )
+        }
+    }
+
+    val currentOralRecorder by rememberUpdatedState(oralRecorder)
+    DisposableEffect(detail.taskId) {
+        onDispose {
+            currentOralRecorder?.let(::stopAndReleaseOralRecorder)
         }
     }
 
@@ -634,6 +664,86 @@ private fun PracticeTaskDetailContent(
         }
         tts.setSpeed(1.0f)
         tts.speak(text, flushCalled = true)
+    }
+
+    fun startOralRecording() {
+        if (!asrPermission.allRequiredPermissionsGranted) {
+            recitationMessage = "先允许麦克风权限，再开始录音。"
+            asrPermission.requestPermissions()
+            return
+        }
+        tts.stop()
+        asr.stop()
+        val file = newOralRecordingCacheFile(context.cacheDir)
+        runCatching {
+            val recorder = createOralMediaRecorder(context = context, outputFile = file)
+            recorder.start()
+            recorder
+        }.onSuccess { recorder ->
+            oralRecorder = recorder
+            oralRecordingFile = file
+            oralRecording = true
+            recitationMessage = "正在录音，读完后点“结束并上传”。"
+        }.onFailure {
+            file.delete()
+            oralRecorder = null
+            oralRecordingFile = null
+            oralRecording = false
+            recitationMessage = "录音启动失败，请确认麦克风权限后再试。"
+        }
+    }
+
+    fun finishOralRecording(itemId: String) {
+        val recorder = oralRecorder
+        val file = oralRecordingFile
+        if (recorder == null || file == null) {
+            oralRecorder = null
+            oralRecordingFile = null
+            oralRecording = false
+            recitationMessage = "还没有开始录音。"
+            return
+        }
+        val stopped = stopAndReleaseOralRecorder(recorder)
+        oralRecorder = null
+        oralRecordingFile = null
+        oralRecording = false
+        if (!stopped || !file.exists() || file.length() <= 0L) {
+            file.delete()
+            recitationMessage = "录音没有保存成功，可以重新录一次。"
+            return
+        }
+        onUploadOralAudio(detail.taskId, itemId, file)
+        recitationMessage = "录音已结束，正在上传并准备识别。"
+    }
+
+    fun toggleOralRecording(itemId: String?) {
+        if (itemId == null) {
+            recitationMessage = "还没有可以录音的段落。"
+            return
+        }
+        if (oralRecording) {
+            finishOralRecording(itemId)
+        } else {
+            startOralRecording()
+        }
+    }
+
+    val oralSentenceCount = if (isOralTask) {
+        splitSentences(detail.items).size.coerceAtLeast(1)
+    } else {
+        0
+    }
+    val oralUiModel = if (isOralTask) {
+        BrainyPalOralTaskUiModel.build(
+            detail = detail,
+            phase = oralPhase,
+            currentSentenceIndex = oralSentenceIndex,
+            revealCurrentSentence = oralSentenceRevealed,
+            showSourcePeek = oralSourcePeek,
+            reflectionUnlocked = oralReflectionUnlocked,
+        )
+    } else {
+        null
     }
 
     fun applyTaskVoiceAction(action: BrainyPalVoiceAction, childMessage: String = "") {
@@ -796,45 +906,89 @@ private fun PracticeTaskDetailContent(
 
         if (isOralTask) {
             val oralItem = detail.items.firstOrNull()
-            RecitationFlowCard(
-                detail = detail,
+            val oralAudioUploaded = oralItem?.let { oralAudioRefs.containsKey(it.itemId) } == true
+            BrainyPalOralTaskCard(
+                model = requireNotNull(oralUiModel),
                 interactionPlan = interactionPlan,
                 draft = oralItem?.let { drafts.get(it.itemId) },
+                recordingModel = BrainyPalOralRecordingUiModel.build(
+                    isRecording = oralRecording,
+                    audioUploaded = oralAudioUploaded,
+                ),
                 message = recitationMessage,
                 actionInProgress = actionInProgress,
-                textHiddenDuringAttempt = isRecitation,
                 onListen = {
                     oralRereadCount += 1
-                    tts.setSpeed(1.0f)
-                    tts.speak(BrainyPalRecitationSpeech.build(detail), flushCalled = true)
-                    recitationMessage = if (isRecitation) {
-                        "正在读材料。听完以后，可以自己试着背。"
+                    speakTaskMaterial()
+                    recitationMessage = when (oralPhase) {
+                        BrainyPalOralTaskPhase.SentencePractice -> "正在读这一段。先抓住这一句就好。"
+                        BrainyPalOralTaskPhase.Check -> "正在读材料。听完就自己试一遍。"
+                        BrainyPalOralTaskPhase.Reading -> "正在读材料。跟着看一遍就好。"
+                    }
+                },
+                onEnterSentencePractice = {
+                    oralPhase = BrainyPalOralTaskPhase.SentencePractice
+                    oralSentenceIndex = 0
+                    oralSentenceRevealed = false
+                    oralSourcePeek = false
+                    recitationMessage = "先看这一句，再自己试。"
+                },
+                onRevealSentence = {
+                    oralSentenceRevealed = !oralSentenceRevealed
+                    recitationMessage = if (oralSentenceRevealed) {
+                        "先看这一句，再自己试。"
                     } else {
-                        "正在读材料。听完以后，可以自己朗读一遍。"
+                        "把这一句遮住，自己回想一下。"
                     }
                 },
-                onRepeat = {
-                    oralRereadCount += 1
-                    tts.setSpeed(1.0f)
-                    tts.speak(BrainyPalRecitationSpeech.build(detail), flushCalled = true)
-                    recitationMessage = "再听一遍，不着急，抓住意思就好。"
-                },
-                onMarkStuck = {
-                    oralItem?.let { item ->
-                        val draft = drafts.get(item.itemId)
-                        val nextEvidence = draft.evidence.ifBlank { "我卡住了：" }
-                        onUpdateDraft(item.itemId, draft.answer, nextEvidence)
+                onNextSentence = {
+                    if (oralSentenceIndex < oralSentenceCount - 1) {
+                        oralSentenceIndex += 1
+                        oralSentenceRevealed = false
+                        recitationMessage = "换一句继续，不着急。"
+                    } else {
+                        recitationMessage = if (isRecitation) {
+                            "已经到最后一句了，可以开始背诵。"
+                        } else {
+                            "已经到最后一句了，可以开始朗读。"
+                        }
                     }
-                    recitationMessage = "已经标记卡点，写一点哪里不顺就可以。"
+                },
+                onExitSentencePractice = {
+                    oralPhase = BrainyPalOralTaskPhase.Reading
+                    oralSentenceIndex = 0
+                    oralSentenceRevealed = false
+                    oralSourcePeek = false
+                    recitationMessage = "先看一遍，再试一句。"
+                },
+                onEnterCheck = {
+                    oralPhase = BrainyPalOralTaskPhase.Check
+                    oralSourcePeek = false
+                    oralSentenceRevealed = false
+                    recitationMessage = if (isRecitation) {
+                        "准备好了就试着背，想看时点一下原文。"
+                    } else {
+                        "准备好了就试着读，想看时点一下原文。"
+                    }
+                },
+                onToggleSourcePeek = {
+                    oralSourcePeek = !oralSourcePeek
+                    recitationMessage = if (oralSourcePeek) {
+                        "看一眼就好，准备好了再试。"
+                    } else {
+                        "原文已收起，可以继续。"
+                    }
                 },
                 onMarkDone = {
+                    oralReflectionUnlocked = true
                     oralItem?.let { item ->
                         val draft = drafts.get(item.itemId)
                         val nextAnswer = draft.answer.ifBlank { "4" }
                         onUpdateDraft(item.itemId, nextAnswer, draft.evidence)
                     }
-                    recitationMessage = "很好，填一个 1-5 分自评后就可以提交复盘。"
+                    recitationMessage = "很好，给自己 1-5 分，再记一下哪里卡住。"
                 },
+                onToggleRecording = { toggleOralRecording(oralItem?.itemId) },
                 onUpdateDraft = { answer, evidence ->
                     oralItem?.let { item ->
                         onUpdateDraft(item.itemId, answer, evidence)
@@ -844,8 +998,13 @@ private fun PracticeTaskDetailContent(
                     oralItem?.let { item ->
                         onSaveAnswer(detail.taskId, item.itemId, answer, evidence)
                     }
+                    recitationMessage = "已保存这次复盘。"
                 },
             )
+        }
+
+        if (isOralTask) {
+            helpHint?.message?.let { PracticeHelpHintCard(it) }
         }
 
         if (actionStatus != null) {
@@ -891,7 +1050,7 @@ private fun PracticeTaskDetailContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 54.dp),
-            enabled = detail.canSubmit && !actionInProgress,
+            enabled = detail.canSubmit && !actionInProgress && (!isOralTask || oralReflectionUnlocked),
             onClick = {
                 if (isOralTask) {
                     val request = oralEvidenceRequest(
@@ -899,11 +1058,12 @@ private fun PracticeTaskDetailContent(
                         drafts = drafts,
                         rereadCount = oralRereadCount,
                         textHiddenDuringAttempt = isRecitation,
+                        audioRefs = oralAudioRefs,
                     )
                     if (request != null) {
                         onSubmitOralEvidence(detail.taskId, request)
                     } else {
-                        recitationMessage = "先完成朗读/背诵并填一个 1-5 分自评，再提交复盘。"
+                        recitationMessage = "先完成一次朗读/背诵，再给自己 1-5 分。"
                     }
                 } else {
                     onSubmitTask(detail.taskId)
@@ -912,7 +1072,11 @@ private fun PracticeTaskDetailContent(
         ) {
             Icon(HugeIcons.Tick01, null)
             Text(
-                text = if (detail.canSubmit) interactionPlan.submitLabel else "已提交",
+                text = when {
+                    !detail.canSubmit -> "已提交"
+                    isOralTask && !oralReflectionUnlocked -> "完成后提交"
+                    else -> interactionPlan.submitLabel
+                },
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
@@ -1071,164 +1235,6 @@ private fun PracticeExternalWorkCard(
                 Icon(HugeIcons.ArrowRight01, contentDescription = null)
             },
         )
-    }
-}
-
-@Composable
-private fun RecitationFlowCard(
-    detail: BrainyPalChildPracticeTaskDetail,
-    interactionPlan: BrainyPalChildTaskInteractionPlan,
-    draft: me.rerere.rikkahub.brainypal.child.BrainyPalPracticeDraft?,
-    message: String,
-    actionInProgress: Boolean,
-    textHiddenDuringAttempt: Boolean,
-    onListen: () -> Unit,
-    onRepeat: () -> Unit,
-    onMarkStuck: () -> Unit,
-    onMarkDone: () -> Unit,
-    onUpdateDraft: (String, String) -> Unit,
-    onSave: (String, String) -> Unit,
-) {
-    val steps = detail.taskSpec
-        ?.steps
-        ?.map { it.title }
-        ?.filter { it.isNotBlank() }
-        ?.takeIf { it.isNotEmpty() }
-        ?: if (textHiddenDuringAttempt) {
-            listOf("先听一遍", "合上材料自己背", "标记哪里卡住")
-        } else {
-            listOf("先听一遍", "自己完整读一遍", "标记哪里不顺")
-        }
-    val material = detail.items.joinToString("\n") { it.prompt }
-    val title = if (textHiddenDuringAttempt) "背诵流程" else "朗读流程"
-    val materialLabel = if (textHiddenDuringAttempt) "材料已隐藏" else "材料"
-    val materialText = if (textHiddenDuringAttempt) {
-        "背诵时不显示原文。需要时可以先听一遍，完成后用自评和卡点复盘。"
-    } else {
-        material.ifBlank { detail.title }
-    }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            steps.forEachIndexed { index, step ->
-                Text(
-                    text = "${index + 1}. $step",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-            }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        text = materialLabel,
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(
-                        text = materialText,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-            Button(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-                enabled = !actionInProgress,
-                onClick = onListen,
-            ) {
-                Icon(HugeIcons.Book03, null)
-                Text(
-                    text = "听一遍材料",
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilledTonalButton(
-                    modifier = Modifier.weight(1f),
-                    enabled = !actionInProgress,
-                    onClick = onRepeat,
-                ) {
-                    Text("再听一遍")
-                }
-                FilledTonalButton(
-                    modifier = Modifier.weight(1f),
-                    enabled = !actionInProgress,
-                    onClick = onMarkStuck,
-                ) {
-                    Text("卡住了")
-                }
-            }
-            OutlinedButton(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 44.dp),
-                enabled = !actionInProgress,
-                onClick = onMarkDone,
-            ) {
-                Icon(HugeIcons.Tick01, null)
-                Text(
-                    text = if (textHiddenDuringAttempt) "我背完了" else "我读完了",
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = draft?.answer.orEmpty(),
-                onValueChange = { onUpdateDraft(it, draft?.evidence.orEmpty()) },
-                enabled = !actionInProgress,
-                label = { Text(interactionPlan.answerLabel) },
-                minLines = 2,
-                maxLines = 4,
-            )
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = draft?.evidence.orEmpty(),
-                onValueChange = { onUpdateDraft(draft?.answer.orEmpty(), it) },
-                enabled = !actionInProgress,
-                label = { Text(interactionPlan.evidenceLabel) },
-                minLines = 2,
-                maxLines = 4,
-            )
-            FilledTonalButton(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-                enabled = !actionInProgress && draft != null,
-                onClick = { onSave(draft?.answer.orEmpty(), draft?.evidence.orEmpty()) },
-            ) {
-                Icon(HugeIcons.FloppyDisk, null)
-                Text(
-                    text = "保存自评",
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-        }
     }
 }
 
@@ -1961,6 +1967,7 @@ internal fun oralEvidenceRequest(
     drafts: BrainyPalPracticeDrafts,
     rereadCount: Int,
     textHiddenDuringAttempt: Boolean,
+    audioRefs: Map<String, String> = emptyMap(),
 ): BrainyPalSubmitOralEvidenceRequest? {
     val attemptSessionId = detail.attemptSessionId?.takeIf { it.isNotBlank() } ?: return null
     val items = detail.items.mapNotNull { item ->
@@ -1970,6 +1977,7 @@ internal fun oralEvidenceRequest(
         if (answer.isBlank() && evidence.isBlank()) return@mapNotNull null
         BrainyPalSubmitOralEvidenceItemRequest(
             itemId = item.itemId,
+            audioRef = audioRefs[item.itemId]?.takeIf { it.isNotBlank() },
             transcript = answer.takeIf { it.isNotBlank() && oralSelfRating(it) == null },
             selfRating = oralSelfRating(answer) ?: 3,
             rereadCount = rereadCount.coerceAtLeast(0),
@@ -2011,6 +2019,36 @@ private fun copyUriToDictationOcrCache(context: Context, uri: Uri): File {
         }
     }
     return target
+}
+
+private fun newOralRecordingCacheFile(cacheDir: File): File {
+    return cacheDir.resolve("brainypal_oral_${System.currentTimeMillis()}.m4a")
+}
+
+private fun createOralMediaRecorder(
+    context: Context,
+    outputFile: File,
+): MediaRecorder {
+    val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        MediaRecorder(context)
+    } else {
+        @Suppress("DEPRECATION")
+        MediaRecorder()
+    }
+    recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+    recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+    recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+    recorder.setAudioEncodingBitRate(96_000)
+    recorder.setAudioSamplingRate(44_100)
+    recorder.setOutputFile(outputFile.absolutePath)
+    recorder.prepare()
+    return recorder
+}
+
+private fun stopAndReleaseOralRecorder(recorder: MediaRecorder): Boolean {
+    val stopped = runCatching { recorder.stop() }.isSuccess
+    runCatching { recorder.release() }
+    return stopped
 }
 
 @Composable

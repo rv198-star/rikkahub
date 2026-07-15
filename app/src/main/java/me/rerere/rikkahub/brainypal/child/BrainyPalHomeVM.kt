@@ -28,6 +28,11 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalVoiceCommandInterpreter
 import me.rerere.rikkahub.brainypal.shared.BrainyPalVoiceControlState
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.utils.UiState
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import kotlin.uuid.Uuid
 
 data class BrainyPalPracticeTaskActionStatus(
@@ -46,6 +51,7 @@ data class BrainyPalPracticeTaskDetailState(
     val drafts: BrainyPalPracticeDrafts = BrainyPalPracticeDrafts(),
     val helpHint: BrainyPalPracticeTaskHelpHint? = null,
     val handoffDisplay: BrainyPalPracticeHandoffDisplay? = null,
+    val oralAudioRefs: Map<String, String> = emptyMap(),
     val actionInProgress: Boolean = false,
     val actionStatus: BrainyPalPracticeTaskActionStatus? = null,
 )
@@ -313,6 +319,46 @@ class BrainyPalHomeVM(
         }
     }
 
+    fun uploadOralAudio(
+        taskId: String,
+        itemId: String,
+        file: File,
+    ) {
+        viewModelScope.launch {
+            _practiceDetailState.value = _practiceDetailState.value.copy(
+                selectedTaskId = taskId,
+                actionInProgress = true,
+                actionStatus = BrainyPalPracticeActionFeedback.pendingStatus("正在上传录音..."),
+            )
+            runCatching {
+                practiceApi().uploadOralAudio(
+                    taskId = taskId,
+                    itemId = itemId.toRequestBody("text/plain".toMediaType()),
+                    file = oralAudioPart(file),
+                )
+            }.onSuccess { upload ->
+                _practiceDetailState.value = _practiceDetailState.value.copy(
+                    selectedTaskId = taskId,
+                    oralAudioRefs = _practiceDetailState.value.oralAudioRefs + (itemId to upload.audioRef),
+                    actionInProgress = false,
+                    actionStatus = BrainyPalPracticeTaskActionStatus("录音已上传，提交后会自动识别"),
+                )
+            }.onFailure { error ->
+                if (error is CancellationException) {
+                    throw error
+                }
+                _practiceDetailState.value = _practiceDetailState.value.copy(
+                    selectedTaskId = taskId,
+                    actionInProgress = false,
+                    actionStatus = BrainyPalPracticeTaskActionStatus(
+                        message = "录音上传失败，可以稍后再试",
+                        error = true,
+                    ),
+                )
+            }
+        }
+    }
+
     fun submitOralEvidence(
         taskId: String,
         request: BrainyPalSubmitOralEvidenceRequest,
@@ -429,6 +475,7 @@ class BrainyPalHomeVM(
                     drafts = currentDrafts.replaceFromDetail(detail),
                     helpHint = helpHint,
                     handoffDisplay = _practiceDetailState.value.handoffDisplay,
+                    oralAudioRefs = _practiceDetailState.value.oralAudioRefs,
                     actionStatus = actionStatus,
                 )
                 refresh()
@@ -473,3 +520,20 @@ private data class SavedPracticeAnswer(
     val answer: String,
     val evidence: String,
 )
+
+private fun oralAudioPart(file: File): MultipartBody.Part {
+    val body = file.asRequestBody(oralAudioMediaType(file).toMediaType())
+    return MultipartBody.Part.createFormData("file", file.name, body)
+}
+
+private fun oralAudioMediaType(file: File): String {
+    return when (file.extension.lowercase()) {
+        "wav" -> "audio/wav"
+        "mp3" -> "audio/mpeg"
+        "ogg" -> "audio/ogg"
+        "opus" -> "audio/opus"
+        "webm" -> "audio/webm"
+        "pcm" -> "audio/L16"
+        else -> "audio/mp4"
+    }
+}

@@ -24,6 +24,23 @@ class BrainyPalOralEvidenceSubmissionTest {
     }
 
     @Test
+    fun `oral evidence request includes uploaded audio ref for attempted item`() {
+        val request = oralEvidenceRequest(
+            detail = oralTask(attemptSessionId = "attempt_reading_1"),
+            drafts = BrainyPalPracticeDrafts()
+                .edit("line_1", "4", "第二句换气"),
+            rereadCount = 2,
+            textHiddenDuringAttempt = false,
+            audioRefs = mapOf("line_1" to "brainypal-upload://oral/reading/line_1/clip.m4a"),
+        )
+
+        assertEquals(
+            "brainypal-upload://oral/reading/line_1/clip.m4a",
+            request?.items?.single()?.audioRef,
+        )
+    }
+
+    @Test
     fun `oral evidence request is not created without attempt session`() {
         val request = oralEvidenceRequest(
             detail = oralTask(attemptSessionId = null),

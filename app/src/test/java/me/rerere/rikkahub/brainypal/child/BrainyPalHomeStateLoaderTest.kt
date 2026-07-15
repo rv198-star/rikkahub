@@ -13,6 +13,7 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskSummary
 import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskDetail
 import me.rerere.rikkahub.brainypal.shared.BrainyPalConfirmDictationOcrEvidenceRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalCreatePracticeHandoffCodeRequest
+import me.rerere.rikkahub.brainypal.shared.BrainyPalOralAudioUploadResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalPracticeHandoffCodeResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalPracticeHintResponse
 import me.rerere.rikkahub.brainypal.shared.BrainyPalRecordPracticeTaskAnswerRequest
@@ -23,6 +24,8 @@ import me.rerere.rikkahub.brainypal.shared.BrainyPalSubmitDictationOcrEvidenceRe
 import me.rerere.rikkahub.brainypal.shared.BrainyPalSubmitOralEvidenceRequest
 import me.rerere.rikkahub.brainypal.shared.BrainyPalSubmitPracticeTaskRequest
 import me.rerere.rikkahub.data.datastore.Settings
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -159,6 +162,14 @@ class BrainyPalHomeStateLoaderTest {
             request: BrainyPalSubmitDictationOcrEvidenceRequest,
         ): BrainyPalChildPracticeTaskDetail {
             error("dictation OCR evidence should not be submitted by home state")
+        }
+
+        override suspend fun uploadOralAudio(
+            taskId: String,
+            itemId: RequestBody,
+            file: MultipartBody.Part,
+        ): BrainyPalOralAudioUploadResponse {
+            error("oral audio should not be uploaded by home state")
         }
 
         override suspend fun submitOralEvidence(

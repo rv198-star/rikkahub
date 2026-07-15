@@ -507,6 +507,29 @@ class BrainyPalChildApiTest {
     }
 
     @Test
+    fun `oral audio upload response decodes server upload ref`() {
+        val body = """
+            {
+              "task_id": "reading-upload",
+              "item_id": "p1",
+              "audio_ref": "brainypal-upload://oral/reading-upload/p1/clip.wav",
+              "content_type": "audio/wav",
+              "size_bytes": 16,
+              "file_name": "clip.wav"
+            }
+        """.trimIndent()
+
+        val response = JsonInstant.decodeFromString<BrainyPalOralAudioUploadResponse>(body)
+
+        assertEquals("reading-upload", response.taskId)
+        assertEquals("p1", response.itemId)
+        assertEquals("brainypal-upload://oral/reading-upload/p1/clip.wav", response.audioRef)
+        assertEquals("audio/wav", response.contentType)
+        assertEquals(16, response.sizeBytes)
+        assertEquals("clip.wav", response.fileName)
+    }
+
+    @Test
     fun `oral submission response decodes attempt result and oral evidence`() {
         val body = """
             {
@@ -547,6 +570,10 @@ class BrainyPalChildApiTest {
                   "stuck_points": ["第二句总要看提示"],
                   "audio_ref": null,
                   "transcript": "孩子侧可见转写",
+                  "transcription_status": "completed",
+                  "transcript_provider": "72live-whisper",
+                  "transcript_model": "whisper-large-v3-turbo",
+                  "transcription_error": null,
                   "text_hidden_during_attempt": true,
                   "created_at": "2026-06-14T09:00:00+08:00"
                 }
@@ -598,6 +625,10 @@ class BrainyPalChildApiTest {
         assertEquals("recitation", response.task.mode)
         assertEquals(true, response.oralEvidenceByItem["line_1"]?.textHiddenDuringAttempt)
         assertEquals("孩子侧可见转写", response.oralEvidenceByItem["line_1"]?.transcript)
+        assertEquals("completed", response.oralEvidenceByItem["line_1"]?.transcriptionStatus)
+        assertEquals("72live-whisper", response.oralEvidenceByItem["line_1"]?.transcriptProvider)
+        assertEquals("whisper-large-v3-turbo", response.oralEvidenceByItem["line_1"]?.transcriptModel)
+        assertEquals(null, response.oralEvidenceByItem["line_1"]?.transcriptionError)
         assertEquals("recitation", response.result?.learningRecord?.recordType)
         assertEquals("attempt_recitation", response.toTaskDetail().attemptSessionId)
         assertTrue(response.toTaskDetail().result?.parentSummary.orEmpty().contains("重读 4 次"))

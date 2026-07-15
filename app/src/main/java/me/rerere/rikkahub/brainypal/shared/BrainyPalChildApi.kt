@@ -2,9 +2,13 @@ package me.rerere.rikkahub.brainypal.shared
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
+import retrofit2.http.Part
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -55,6 +59,14 @@ interface BrainyPalChildApi {
         @Body request: BrainyPalSubmitDictationOcrEvidenceRequest,
     ): BrainyPalChildPracticeTaskDetail
 
+    @Multipart
+    @POST("/api/v1/child/practice-tasks/{task_id}/oral-audio")
+    suspend fun uploadOralAudio(
+        @Path("task_id") taskId: String,
+        @Part("item_id") itemId: RequestBody,
+        @Part file: MultipartBody.Part,
+    ): BrainyPalOralAudioUploadResponse
+
     @POST("/api/v1/child/practice-tasks/{task_id}/oral-submissions")
     suspend fun submitOralEvidence(
         @Path("task_id") taskId: String,
@@ -104,6 +116,22 @@ data class BrainyPalPracticeHandoffCodeResponse(
     val joinPath: String,
     @SerialName("join_url")
     val joinUrl: String,
+)
+
+@Serializable
+data class BrainyPalOralAudioUploadResponse(
+    @SerialName("task_id")
+    val taskId: String,
+    @SerialName("item_id")
+    val itemId: String,
+    @SerialName("audio_ref")
+    val audioRef: String,
+    @SerialName("content_type")
+    val contentType: String,
+    @SerialName("size_bytes")
+    val sizeBytes: Int,
+    @SerialName("file_name")
+    val fileName: String,
 )
 
 @Serializable
@@ -494,6 +522,14 @@ data class BrainyPalPracticeOralEvidenceView(
     @SerialName("audio_ref")
     val audioRef: String? = null,
     val transcript: String? = null,
+    @SerialName("transcription_status")
+    val transcriptionStatus: String? = null,
+    @SerialName("transcript_provider")
+    val transcriptProvider: String? = null,
+    @SerialName("transcript_model")
+    val transcriptModel: String? = null,
+    @SerialName("transcription_error")
+    val transcriptionError: String? = null,
     @SerialName("text_hidden_during_attempt")
     val textHiddenDuringAttempt: Boolean = false,
     @SerialName("created_at")
