@@ -2,7 +2,7 @@ package me.rerere.rikkahub.ui.context
 
 import androidx.navigation3.runtime.NavKey
 import me.rerere.rikkahub.Screen
-import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -18,6 +18,11 @@ class NavigatorTest {
         navigator.navigate(Screen.SettingProvider)
 
         assertEquals(listOf(Screen.Chat("chat-id"), Screen.BrainyPalHome), backStack)
+        assertEquals("这个页面需要家长处理，已经回到 BrainyPal 首页。", navigator.blockedRouteNotice)
+
+        navigator.clearBlockedRouteNotice()
+
+        assertEquals(null, navigator.blockedRouteNotice)
     }
 
     @Test
@@ -31,6 +36,7 @@ class NavigatorTest {
         navigator.clearAndNavigate(Screen.Developer)
 
         assertEquals(listOf(Screen.BrainyPalHome), backStack)
+        assertEquals("这个页面需要家长处理，已经回到 BrainyPal 首页。", navigator.blockedRouteNotice)
     }
 
     @Test

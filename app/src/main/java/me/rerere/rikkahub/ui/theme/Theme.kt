@@ -21,6 +21,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import kotlinx.serialization.Serializable
+import me.rerere.rikkahub.BuildConfig
+import me.rerere.rikkahub.brainypal.child.theme.BrainyPalChildTheme
 import me.rerere.rikkahub.ui.hooks.rememberAmoledDarkMode
 import me.rerere.rikkahub.ui.hooks.rememberColorMode
 import me.rerere.rikkahub.ui.hooks.rememberUserSettingsState
@@ -55,6 +57,9 @@ fun RikkahubTheme(
     val amoledDarkMode by rememberAmoledDarkMode()
 
     val colorScheme = when {
+        BuildConfig.BRAINYPAL_CHILD_MODE -> {
+            BrainyPalChildTheme.colorScheme(dark = darkTheme)
+        }
         settings.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -66,7 +71,7 @@ fun RikkahubTheme(
         }
     }
     val colorSchemeConverted = remember(darkTheme, amoledDarkMode, colorScheme) {
-        if (darkTheme && amoledDarkMode) {
+        if (!BuildConfig.BRAINYPAL_CHILD_MODE && darkTheme && amoledDarkMode) {
             colorScheme.copy(
                 background = AMOLED_DARK_BACKGROUND,
                 surface = AMOLED_DARK_BACKGROUND,

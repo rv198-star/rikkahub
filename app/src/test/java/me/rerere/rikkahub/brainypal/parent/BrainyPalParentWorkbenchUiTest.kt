@@ -1,0 +1,841 @@
+package me.rerere.rikkahub.brainypal.parent
+
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskDetail
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildPracticeTaskItem
+import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrBoundingBox
+import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationOcrEvidence
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentMaterial
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildConnectionConfig
+import me.rerere.rikkahub.brainypal.shared.BrainyPalImportBatch
+import me.rerere.rikkahub.brainypal.shared.BrainyPalImportBatchCandidate
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSession
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionCandidate
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentImportSessionPreview
+import me.rerere.rikkahub.brainypal.shared.BrainyPalImportBatchLink
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatStructuredAction
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentChatTriggerResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentAchievementModuleSummary
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentAchievementWeeklySummaryResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanCandidate
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanSnapshot
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPhotoScanVerification
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentLearningRecordSummaryView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentLearningRecordsSummaryResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeItemEvidenceView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeOralEvidenceView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeResultItemView
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentPracticeTaskResultDetailResponse
+import me.rerere.rikkahub.brainypal.shared.BrainyPalStrategyVersion
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentWebMaterialSource
+import me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskSummary
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class BrainyPalParentWorkbenchUiTest {
+    @Test
+    fun `supply entries start from parent source modes`() {
+        val entries = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
+
+        assertEquals(
+            listOf(
+                "练习题",
+                "听写",
+                "阅读导读",
+                "背诵",
+                "错题复练",
+                "粘贴材料",
+                "拍照扫描",
+                "联网找材料",
+                "简单说一下",
+            ),
+            entries.map { it.label },
+        )
+        assertTrue(entries[0].structuredPrimary)
+        assertTrue(entries[1].structuredPrimary)
+        assertTrue(entries[2].structuredPrimary)
+        assertTrue(entries[3].structuredPrimary)
+        assertTrue(entries[4].structuredPrimary)
+        assertTrue(entries.first { it.id == "practice_questions" }.enabled)
+        assertTrue(entries.first { it.id == "dictation" }.enabled)
+        assertTrue(entries.first { it.id == "wrong_questions" }.enabled)
+        assertTrue(entries.first { it.id == "paste_text" }.enabled)
+        assertTrue(entries.first { it.id == "photo_scan" }.enabled)
+        assertEquals("可用", entries.first { it.id == "photo_scan" }.statusLabel)
+        assertTrue(entries.first { it.id == "web_search" }.enabled)
+        assertTrue(entries.first { it.id == "chat_light" }.enabled)
+    }
+
+    @Test
+    fun `workbench visual density guard keeps primary scan compact`() {
+        val guard = BrainyPalParentWorkbenchUi.visualDensityGuard
+        val groups = BrainyPalParentWorkbenchUi.supplyEntryGroups(configured = true)
+
+        assertEquals(5, guard.maxPrimaryEntries)
+        assertEquals(4, guard.maxSecondaryEntries)
+        assertEquals(4, guard.maxSummaryChips)
+        assertEquals(3, guard.maxPendingTaskActions)
+        assertEquals(
+            listOf("练习题", "听写", "阅读导读", "背诵", "错题复练"),
+            groups.primary.map { it.label },
+        )
+        assertEquals(
+            listOf("粘贴材料", "拍照扫描", "联网找材料", "简单说一下"),
+            groups.secondary.map { it.label },
+        )
+        assertTrue(groups.primary.all { it.structuredPrimary })
+        assertTrue(groups.secondary.none { it.structuredPrimary })
+    }
+
+    @Test
+    fun `workbench presents structured import as primary and chat as simple fallback`() {
+        val workbench = me.rerere.rikkahub.brainypal.shared.BrainyPalParentWorkbench.from(
+            me.rerere.rikkahub.brainypal.shared.BrainyPalParentTaskWorkbenchResponse()
+        )
+
+        assertEquals("导入作业材料", workbench.primaryEntryLabel)
+        assertEquals("简单说一下需求", workbench.secondaryChatLabel)
+        assertEquals("structured", workbench.primaryEntryKind)
+    }
+
+    @Test
+    fun `workbench chips prioritize pending material ocr confirmation and active tasks`() {
+        val chips = BrainyPalParentWorkbenchUi.summaryChips(
+            draftMaterials = listOf(material("m1"), material("m2")),
+            pendingTasks = listOf(pendingTask()),
+            tasks = listOf(
+                dictationTask(
+                    taskId = "ocr-task",
+                    status = "reviewing",
+                    confirmationStatus = "unconfirmed",
+                ),
+                practiceTask(taskId = "active-task", status = "in_progress"),
+                practiceTask(taskId = "done-task", status = "completed"),
+            ),
+        )
+
+        assertEquals(
+            listOf("待确认材料 2", "待发任务 1", "待确认 OCR 1", "进行中任务 1"),
+            chips.map { "${it.label} ${it.count}" },
+        )
+    }
+
+    @Test
+    fun `pending task cards use parent status label instead of draft copy`() {
+        val cards = BrainyPalParentWorkbenchUi.pendingTaskCards(
+            listOf(pendingTask(title = "口算待发任务"))
+        )
+
+        assertEquals("口算待发任务", cards.single().title)
+        assertEquals("待发任务", cards.single().statusLabel)
+        assertEquals("2 题", cards.single().itemCountLabel)
+        assertEquals(listOf("检查", "编辑", "确认下发", "归档", "删除"), cards.single().actionLabels)
+        assertEquals(listOf("检查", "编辑", "确认下发"), cards.single().visibleActionLabels)
+        assertFalse(cards.single().statusLabel.contains("草稿"))
+    }
+
+    @Test
+    fun `workload guard prompt asks for calm second confirmation`() {
+        val prompt = BrainyPalParentWorkbenchUi.workloadGuardPrompt(
+            task = pendingTask(title = "几何练习"),
+            guard = me.rerere.rikkahub.brainypal.shared.BrainyPalParentWorkloadGuardConflict(
+                message = "今天已经有较多待完成任务，确认后仍可下发。",
+                activeTasks = 3,
+                estimatedMinutes = 25,
+                activeTaskWarningLimit = 3,
+                estimatedMinutesWarningLimit = 45,
+            ),
+        )
+
+        assertEquals("先确认孩子今天的负载", prompt.title)
+        assertEquals("几何练习", prompt.taskTitle)
+        assertEquals("当前还有 3 个进行中任务，预计约 25 分钟。", prompt.loadSummary)
+        assertEquals(listOf("先放待发任务", "确认下发"), prompt.actionLabels)
+    }
+
+    @Test
+    fun `import confirmation expands candidate content when answer is missing`() {
+        val sections = BrainyPalParentWorkbenchUi.importConfirmationSections(
+            importSession(riskFlags = listOf("missing_reference_answer"))
+        )
+
+        assertEquals(
+            listOf("AI 判断", "候选内容", "孩子体验预览", "下发设置"),
+            sections.map { it.label },
+        )
+        assertTrue(sections.first { it.id == "candidate_content" }.expanded)
+        assertFalse(sections.first { it.id == "child_preview" }.expanded)
+        assertEquals(
+            listOf("保存为待发任务", "确认并立即下发"),
+            BrainyPalParentWorkbenchUi.importConfirmationActions(importSession()).map { it.label },
+        )
+    }
+
+    @Test
+    fun `import confirmation stays compact for high confidence dictation`() {
+        val sections = BrainyPalParentWorkbenchUi.importConfirmationSections(
+            importSession(
+                entryGoal = "dictation",
+                riskFlags = emptyList(),
+                preview = BrainyPalParentImportSessionPreview(taskType = "dictation"),
+                candidates = listOf(
+                    BrainyPalParentImportSessionCandidate(
+                        candidateId = "candidate_1",
+                        kind = "dictation_entry",
+                        prompt = "认真",
+                    )
+                ),
+            )
+        )
+
+        assertTrue(sections.first { it.id == "ai_judgement" }.expanded)
+        assertFalse(sections.first { it.id == "candidate_content" }.expanded)
+        assertFalse(sections.first { it.id == "send_settings" }.expanded)
+    }
+
+    @Test
+    fun `import batch card opens shared review and blocks direct child send`() {
+        val connection = BrainyPalChildConnectionConfig(
+            baseUrl = "http://192.168.5.80:8000/rikka/v1",
+            apiKey = "local",
+        )
+        val card = BrainyPalParentWorkbenchUi.importBatchCard(
+            batch = BrainyPalImportBatch(
+                batchId = "batch_1",
+                title = "拍照试卷",
+                sourceType = "photo",
+                parentIntent = "record_wrong_questions",
+                status = "needs_confirmation",
+                candidates = listOf(
+                    BrainyPalImportBatchCandidate(
+                        candidateId = "q1",
+                        pageIndex = 1,
+                        rawText = "3 + 4 = ?",
+                        questionText = "3 + 4 = ?",
+                        candidateType = "wrong_question_candidate",
+                        recommendedDestination = "wrong_question_bank",
+                        confidence = 0.88f,
+                    )
+                ),
+                summaryCounts = mapOf("total" to 1, "confirmed" to 0),
+            ),
+            connection = connection,
+        )
+
+        assertEquals("拍照试卷", card.title)
+        assertEquals("错题导入 · 1 个候选 · 0 个已确认", card.body)
+        assertEquals("继续确认", card.primaryActionLabel)
+        assertEquals("http://192.168.5.80:8000/parent/import-batches?batch_id=batch_1", card.reviewUrl)
+        assertFalse(card.canDirectSend)
+        assertTrue(card.requiresParentConfirmation)
+        assertEquals(
+            "http://192.168.5.80:8000/parent/import-batches?batch_id=batch_1",
+            BrainyPalParentWorkbenchUi.importBatchReviewUrl(
+                connection = connection,
+                reviewPathOrUrl = "/parent/import-batches?batch_id=batch_1",
+            ),
+        )
+        assertEquals(
+            "https://brainypal.example/parent/import-batches?batch_id=batch_1",
+            BrainyPalParentWorkbenchUi.importBatchReviewUrl(
+                connection = connection,
+                reviewPathOrUrl = "https://brainypal.example/parent/import-batches?batch_id=batch_1",
+            ),
+        )
+    }
+
+    @Test
+    fun `parent supply entries map to import batch intents`() {
+        assertEquals("import_practice", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("practice_questions"))
+        assertEquals("import_dictation", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("dictation"))
+        assertEquals("import_reading", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("reading"))
+        assertEquals("import_reading", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("recitation"))
+        assertEquals("record_wrong_questions", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("wrong_questions"))
+        assertEquals("chat_import", BrainyPalParentWorkbenchUi.importBatchIntentForSupplyEntry("chat_light"))
+    }
+
+    @Test
+    fun `parent supply entry selection jumps to the actionable detail area`() {
+        val practice = BrainyPalParentWorkbenchUi.supplyEntrySelectionFeedback(
+            entry = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
+                .first { it.id == "practice_questions" },
+        )
+        val photo = BrainyPalParentWorkbenchUi.supplyEntrySelectionFeedback(
+            entry = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
+                .first { it.id == "photo_scan" },
+        )
+        val chat = BrainyPalParentWorkbenchUi.supplyEntrySelectionFeedback(
+            entry = BrainyPalParentWorkbenchUi.supplyEntries(configured = true)
+                .first { it.id == "chat_light" },
+        )
+
+        assertEquals(3, BrainyPalParentWorkbenchUi.SUPPLY_SELECTOR_ITEM_INDEX)
+        assertEquals(4, BrainyPalParentWorkbenchUi.SUPPLY_DETAIL_ITEM_INDEX)
+        assertEquals("material_import", practice.detailAnchorId)
+        assertEquals("已定位到练习题导入区", practice.message)
+        assertTrue(practice.shouldScrollToDetail)
+        assertEquals("photo_scan", photo.detailAnchorId)
+        assertEquals("已定位到拍照扫描操作区", photo.message)
+        assertTrue(photo.shouldScrollToDetail)
+        assertEquals("chat_light", chat.detailAnchorId)
+        assertEquals("已定位到简单说一下入口", chat.message)
+        assertTrue(chat.shouldScrollToDetail)
+    }
+
+    @Test
+    fun `chat trigger card prefers import batch review over legacy session`() {
+        val card = BrainyPalParentWorkbenchUi.chatTriggerCard(
+            BrainyPalParentChatTriggerResponse(
+                intent = "prepare_import",
+                requiresConfirmation = true,
+                structuredAction = BrainyPalParentChatStructuredAction(
+                    type = "import_batch",
+                    label = "打开确认页",
+                    requiresConfirmation = true,
+                ),
+                importBatch = BrainyPalImportBatchLink(
+                    batchId = "batch_1",
+                    title = "聊天导入几何题",
+                    status = "needs_confirmation",
+                    parentIntent = "import_practice",
+                    reviewUrl = "/parent/import-batches?batch_id=batch_1",
+                    candidateCount = 2,
+                ),
+                importSession = importSession(title = "旧确认方案"),
+                message = "我先整理成导入批次，请打开确认页核对。",
+            )
+        )
+
+        assertEquals("聊天导入几何题", card.body)
+        assertEquals("打开确认页", card.primaryActionLabel)
+    }
+
+    @Test
+    fun `task groups put ocr confirmation before active and completed work`() {
+        val groups = BrainyPalParentWorkbenchUi.taskGroups(
+            listOf(
+                practiceTask(taskId = "active-task", title = "今日练习", status = "in_progress"),
+                practiceTask(taskId = "done-task", title = "已完成练习", status = "completed"),
+                dictationTask(
+                    taskId = "ocr-task",
+                    title = "听写确认",
+                    status = "reviewing",
+                    confirmationStatus = "unconfirmed",
+                ),
+            )
+        )
+
+        assertEquals(listOf("待确认", "进行中", "已完成"), groups.map { it.label })
+        assertEquals(listOf("听写确认"), groups[0].tasks.map { it.title })
+        assertEquals(listOf("今日练习"), groups[1].tasks.map { it.title })
+        assertEquals(listOf("已完成练习"), groups[2].tasks.map { it.title })
+    }
+
+    @Test
+    fun `ocr evidence card requires visible source evidence before attribution`() {
+        val card = BrainyPalParentWorkbenchUi.ocrEvidenceCards(
+            dictationTask(
+                taskId = "ocr-task",
+                status = "reviewing",
+                confirmationStatus = "unconfirmed",
+                confidence = 0.62f,
+                recognizedText = "roket",
+            )
+        ).single()
+
+        assertEquals("第 1 条", card.title)
+        assertEquals("识别：roket · 置信度 62%", card.evidenceLine)
+        assertEquals("照片区域", card.sourceRegionLabel)
+        assertEquals("查看照片区域", card.previewActionLabel)
+        assertEquals(
+            listOf("孩子写错了", "OCR 识别错了", "照片不清楚", "其实是对的"),
+            card.actionLabels,
+        )
+        assertTrue(card.requiresManualConfirmation)
+        assertTrue(card.hasSourceRegionOverlay)
+    }
+
+    @Test
+    fun `confirmed ocr evidence card folds attribution actions into summary`() {
+        val card = BrainyPalParentWorkbenchUi.ocrEvidenceCards(
+            dictationTask(
+                taskId = "ocr-task",
+                status = "reviewing",
+                confirmationStatus = "confirmed",
+                confidence = 0.65f,
+                recognizedText = "ornage",
+                errorAttribution = "ocr_recognized_wrong",
+            )
+        ).single()
+
+        assertFalse(card.requiresManualConfirmation)
+        assertEquals("已确认：OCR 识别错了", card.confirmationSummaryLabel)
+        assertEquals(emptyList<String>(), card.actionLabels)
+        assertEquals("重新查看证据", card.previewActionLabel)
+    }
+
+    @Test
+    fun `web material candidate card shows source and avoids direct dispatch`() {
+        val card = BrainyPalParentWorkbenchUi.webMaterialCandidateCards(
+            listOf(
+                material("material_web_1").copy(
+                    status = "candidate",
+                    inputMode = "web_search",
+                    materialType = "reading_passage",
+                    title = "春晓（孟浩然）",
+                    sourceCandidates = listOf(
+                        BrainyPalParentWebMaterialSource(
+                            sourceUrl = "https://zh.wikisource.org/wiki/春晓_(孟浩然)",
+                            title = "Wikisource：春晓",
+                            sourceType = "public_domain_wikisource",
+                            snippet = "春眠不觉晓；处处闻啼鸟",
+                            uncertaintyNote = "课本版本、标点和注释可能不同。",
+                        )
+                    ),
+                    confidence = 0.72f,
+                    uncertaintyNote = "这是联网来源候选，请家长确认后再入库。",
+                    confirmUrl = "/api/v1/parent/materials/material_web_1/confirm",
+                )
+            )
+        ).single()
+
+        assertEquals("春晓（孟浩然）", card.title)
+        assertEquals("Wikisource：春晓 · https://zh.wikisource.org/wiki/春晓_(孟浩然)", card.sourceLabel)
+        assertEquals("置信度 72%", card.confidenceLabel)
+        assertTrue(card.uncertaintyLabel.contains("家长确认"))
+        assertEquals(listOf("确认入库", "确认并生成待发任务", "拒绝"), card.actionLabels)
+        assertFalse(card.canDirectSend)
+    }
+
+    @Test
+    fun `chat trigger card requires confirmation before import or strategy effects`() {
+        val importCard = BrainyPalParentWorkbenchUi.chatTriggerCard(
+            BrainyPalParentChatTriggerResponse(
+                intent = "prepare_import",
+                requiresConfirmation = true,
+                structuredAction = BrainyPalParentChatStructuredAction(
+                    type = "import_session",
+                    label = "打开导入确认",
+                    requiresConfirmation = true,
+                ),
+                importSession = importSession(entryGoal = "dictation"),
+                message = "我先整理成确认方案，家长确认后才会成为待发任务。",
+            )
+        )
+
+        assertEquals("导入确认候选", importCard.title)
+        assertEquals("打开导入确认", importCard.primaryActionLabel)
+        assertTrue(importCard.requiresConfirmation)
+        assertFalse(importCard.canDirectSend)
+
+        val strategyCard = BrainyPalParentWorkbenchUi.chatTriggerCard(
+            BrainyPalParentChatTriggerResponse(
+                intent = "strategy_proposal",
+                requiresConfirmation = true,
+                structuredAction = BrainyPalParentChatStructuredAction(
+                    type = "strategy_candidate",
+                    label = "确认引导策略",
+                    requiresConfirmation = true,
+                ),
+                message = "我会先生成策略候选，家长确认后才会生效。",
+            )
+        )
+
+        assertEquals("策略候选", strategyCard.title)
+        assertEquals("确认引导策略", strategyCard.primaryActionLabel)
+        assertTrue(strategyCard.requiresConfirmation)
+        assertFalse(strategyCard.canDirectSend)
+    }
+
+    @Test
+    fun `photo scan candidate cards expose editable parent confirmation choices`() {
+        val card = BrainyPalParentWorkbenchUi.photoScanCandidateCards(
+            BrainyPalParentPhotoScanSnapshot(
+                scanId = "scan_1",
+                capturedAt = "2026-06-06T09:30:00Z",
+                candidates = listOf(
+                    BrainyPalParentPhotoScanCandidate(
+                        candidateId = "q1",
+                        questionNumber = "第1题",
+                        questionText = "a - (b - c + d)",
+                        childAnswer = "a-b+c-d",
+                        status = "diagnosable",
+                        recommendation = "recommended",
+                        confidence = 0.95f,
+                        verification = BrainyPalParentPhotoScanVerification(
+                            referenceAnswer = "a-b+c-d",
+                            judgement = "correct",
+                            explanation = "孩子去括号结果与参考答案一致。",
+                            confidence = 0.92f,
+                            requiresParentReview = false,
+                        ),
+                    )
+                ),
+            )
+        ).single()
+
+        assertEquals("第1题", card.numberLabel)
+        assertEquals("置信度 95%", card.confidenceLabel)
+        assertEquals("AI 初判正确", card.verificationLabel)
+        assertEquals(listOf("写入错题", "编辑后写入", "跳过"), card.actionLabels)
+    }
+
+    @Test
+    fun `parent task summary uses child task units by type`() {
+        assertEquals("1 段", BrainyPalParentTaskSummary.from(recitationTask()).itemCountLabel)
+        assertEquals("2 条", BrainyPalParentTaskSummary.from(dictationTask(itemCount = 2)).itemCountLabel)
+        assertEquals("3 题", BrainyPalParentTaskSummary.from(practiceTask(itemCount = 3)).itemCountLabel)
+    }
+
+    @Test
+    fun `learning summary cards show counts and latest parent-safe records`() {
+        val cards = BrainyPalParentWorkbenchUi.learningSummaryCards(
+            BrainyPalParentLearningRecordsSummaryResponse(
+                totalCount = 2,
+                recordTypeCounts = mapOf("practice" to 1, "recitation" to 1),
+                knowledgePoints = listOf("角平分线", "背诵节奏"),
+                latestRecords = listOf(
+                    BrainyPalParentLearningRecordSummaryView(
+                        recordId = "practice-attempt-001",
+                        recordType = "practice",
+                        subject = "数学",
+                        capturedAt = "2026-06-14T09:00:00+08:00",
+                        sourceRefs = listOf("practice_task://task-geometry"),
+                        knowledgePoints = listOf("角平分线"),
+                        parentSummary = "几何题对角平分线关系还不稳。",
+                        strategyVersionId = "strategy_math",
+                        wikiPath = "learning_records/20260614-090000-practice-attempt-001.md",
+                    )
+                ),
+            )
+        )
+
+        assertEquals("学习记录 2", cards.first().title)
+        assertTrue(cards.first().body.contains("练习 1"))
+        assertEquals("数学 · 练习", cards[1].title)
+        assertEquals("几何题对角平分线关系还不稳。", cards[1].body)
+        assertEquals("角平分线", cards[1].metadata)
+    }
+
+    @Test
+    fun `achievement module ids map to parent-facing categories`() {
+        assertEquals("开始意愿", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("bravery_core"))
+        assertEquals("订正收尾", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("repair"))
+        assertEquals("口头表达", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("communication"))
+        assertEquals("卡点应对", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("navigation"))
+        assertEquals("解题过程", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("modeling"))
+        assertEquals("学习过程", BrainyPalParentWorkbenchUi.parentAchievementCategoryLabel("unknown_module"))
+    }
+
+    @Test
+    fun `achievement weekly summary hides child achievement language and realtime feed`() {
+        val card = BrainyPalParentWorkbenchUi.achievementWeeklySummaryCard(
+            BrainyPalParentAchievementWeeklySummaryResponse(
+                periodLabel = "最近 7 天",
+                visibleAcknowledgements = 4,
+                moduleSummaries = listOf(
+                    BrainyPalParentAchievementModuleSummary(
+                        moduleId = "bravery_core",
+                        label = "勇气核心",
+                        status = "steady",
+                        visibleCount = 2,
+                        parentSummary = "勇气核心开始稳定，连续打卡 2 次。",
+                    ),
+                    BrainyPalParentAchievementModuleSummary(
+                        moduleId = "repair",
+                        label = "修复模块",
+                        status = "needs_support",
+                        visibleCount = 1,
+                        parentSummary = "修复模块需要提醒，不展示失败次数。",
+                    ),
+                    BrainyPalParentAchievementModuleSummary(
+                        moduleId = "navigation",
+                        label = "信号导航",
+                        status = "emerging",
+                        visibleCount = 1,
+                        parentSummary = "遇到难题时能接受一个小提示。",
+                    ),
+                    BrainyPalParentAchievementModuleSummary(
+                        moduleId = "communication",
+                        label = "沟通模块",
+                        status = "emerging",
+                        visibleCount = 1,
+                        parentSummary = "愿意说出一个卡点。",
+                    ),
+                ),
+                parentSuggestedWording = listOf(
+                    "我看到你提示后又试了一步，这一步很重要。",
+                    "我们先只看一个地方，不急着全部做完。",
+                    "你可以和我说哪里卡住了。",
+                    "第四条不应展示。",
+                ),
+                strategyNotes = listOf("本周先肯定开始，再缩小到一处订正。"),
+                realtimeEventFeed = listOf("2026-06-16T10:00:00+08:00 原始记录"),
+            )
+        )
+
+        assertEquals("最近 7 天 · 温和周总结", card.title)
+        assertEquals("4 次值得看见的努力", card.headline)
+        assertEquals("这里只看周级趋势，不展开每一步", card.privacyLabel)
+        assertEquals(listOf("开始意愿", "订正收尾", "卡点应对"), card.trendRows.map { it.categoryLabel })
+        assertEquals(3, card.suggestedWording.size)
+        assertEquals("带入策略页确认", card.strategyActionLabel)
+        assertTrue(card.strategyCandidateText?.contains("本周先肯定开始") == true)
+        val forbidden = listOf(
+            "勇气核心",
+            "勇气号空间站",
+            "勇气号",
+            "修复模块",
+            "沟通模块",
+            "技能天梯",
+            "信号",
+            "轨道",
+            "等级",
+            "积分",
+            "金币",
+            "排行",
+            "连续打卡",
+            "streak",
+            "失败",
+            "实时",
+            "监控",
+            "原始记录",
+            "时间戳",
+        )
+        forbidden.forEach { word ->
+            assertFalse("parent card leaked forbidden word: $word", card.parentSafeText.contains(word))
+        }
+    }
+
+    @Test
+    fun `achievement weekly summary empty state avoids strategy action`() {
+        val card = BrainyPalParentWorkbenchUi.achievementWeeklySummaryCard(
+            BrainyPalParentAchievementWeeklySummaryResponse(
+                periodLabel = "最近 7 天",
+            )
+        )
+
+        assertEquals("最近 7 天 · 温和周总结", card.title)
+        assertEquals("还没有形成稳定趋势", card.headline)
+        assertTrue(card.body.contains("先完成几次任务后"))
+        assertTrue(card.trendRows.isEmpty())
+        assertTrue(card.suggestedWording.isEmpty())
+        assertEquals(null, card.strategyActionLabel)
+        assertEquals(null, card.strategyCandidateText)
+    }
+
+    @Test
+    fun `oral result evidence card summarizes rereads and stuck points without transcript`() {
+        val cards = BrainyPalParentWorkbenchUi.resultDetailCards(
+            BrainyPalParentPracticeTaskResultDetailResponse(
+                taskId = "reading-task",
+                title = "朗读短文",
+                subject = "语文",
+                mode = "reading",
+                status = "completed",
+                parentSummary = "孩子完成朗读，自评 4 分，重听 2 次。",
+                resultStatus = "completed",
+                items = listOf(
+                    BrainyPalParentPracticeResultItemView(
+                        itemId = "line_1",
+                        prompt = "春天来了，小草从土里探出头。",
+                        kind = "reading",
+                        resultStatus = "completed",
+                        parentNote = "停顿比上次稳定。",
+                        correctionPrompt = null,
+                        expectedAnswer = null,
+                        wrongQuestionRef = null,
+                        evidence = BrainyPalParentPracticeItemEvidenceView(
+                            answerValue = "4",
+                            answerSource = "oral_self_rating",
+                            oralEvidence = BrainyPalParentPracticeOralEvidenceView(
+                                evidenceId = "oral_line_1",
+                                selfRating = 4,
+                                rereadCount = 2,
+                                stuckPoints = listOf("第二句换气"),
+                                audioRef = "local-cache://oral/line_1.wav",
+                                textHiddenDuringAttempt = false,
+                            ),
+                        ),
+                    )
+                ),
+                nextActions = emptyList(),
+            )
+        )
+
+        assertEquals("朗读短文", cards.first().title)
+        assertTrue(cards.first().body.contains("孩子完成朗读"))
+        assertEquals("第 1 条 · 朗读证据", cards[1].title)
+        assertTrue(cards[1].body.contains("自评 4/5"))
+        assertTrue(cards[1].body.contains("重听 2 次"))
+        assertTrue(cards[1].body.contains("第二句换气"))
+        assertFalse(cards[1].body.contains("transcript"))
+    }
+
+    @Test
+    fun `strategy cards keep draft and active confirmation actions separate`() {
+        val draft = strategy(status = "draft")
+        val active = strategy(versionId = "strategy_review_prompt_002", status = "active")
+        val cards = BrainyPalParentWorkbenchUi.strategyCards(listOf(draft, active))
+
+        assertEquals("待确认策略", cards[0].statusLabel)
+        assertEquals(listOf("确认启用"), cards[0].actionLabels)
+        assertEquals("已启用策略", cards[1].statusLabel)
+        assertEquals(listOf("暂停"), cards[1].actionLabels)
+    }
+
+    private fun material(materialId: String): BrainyPalParentMaterial {
+        return BrainyPalParentMaterial(
+            materialId = materialId,
+            materialType = "dictation",
+            title = "听写材料 $materialId",
+        )
+    }
+
+    private fun pendingTask(
+        taskId: String = "task_pending_1",
+        title: String = "待发练习",
+    ): BrainyPalParentPracticeTaskView {
+        return BrainyPalParentPracticeTaskView(
+            taskId = taskId,
+            title = title,
+            subject = "数学",
+            mode = "practice",
+            status = "draft",
+            parentStatusLabel = "待发任务",
+            totalItems = 2,
+            childVisible = false,
+        )
+    }
+
+    private fun importSession(
+        title: String = "口算练习",
+        entryGoal: String = "practice",
+        riskFlags: List<String> = emptyList(),
+        preview: BrainyPalParentImportSessionPreview = BrainyPalParentImportSessionPreview(
+            taskType = "practice",
+        ),
+        candidates: List<BrainyPalParentImportSessionCandidate> = listOf(
+            BrainyPalParentImportSessionCandidate(
+                candidateId = "candidate_1",
+                kind = "question",
+                prompt = "1+1=?",
+                riskFlags = riskFlags,
+            )
+        ),
+    ): BrainyPalParentImportSession {
+        return BrainyPalParentImportSession(
+            sessionId = "import_1",
+            entryGoal = entryGoal,
+            title = title,
+            subject = "数学",
+            rawText = "1. 1+1=?",
+            riskFlags = riskFlags,
+            candidates = candidates,
+            preview = preview,
+        )
+    }
+
+    private fun practiceTask(
+        taskId: String = "practice-task",
+        title: String = "练习任务",
+        status: String = "in_progress",
+        itemCount: Int = 1,
+    ): BrainyPalChildPracticeTaskDetail {
+        return BrainyPalChildPracticeTaskDetail(
+            taskId = taskId,
+            title = title,
+            taskType = "wrong_question_practice",
+            status = status,
+            helpLimit = 3,
+            helpUsed = 0,
+            items = (1..itemCount).map { index ->
+                BrainyPalChildPracticeTaskItem(
+                    itemId = "practice_$index",
+                    prompt = "题目 $index",
+                )
+            },
+        )
+    }
+
+    private fun dictationTask(
+        taskId: String = "dictation-task",
+        title: String = "听写任务",
+        status: String = "reviewing",
+        confirmationStatus: String = "confirmed",
+        confidence: Float = 0.96f,
+        recognizedText: String = "planet",
+        errorAttribution: String? = if (confirmationStatus == "confirmed") "correct" else null,
+        itemCount: Int = 1,
+    ): BrainyPalChildPracticeTaskDetail {
+        return BrainyPalChildPracticeTaskDetail(
+            taskId = taskId,
+            title = title,
+            taskType = "dictation",
+            status = status,
+            helpLimit = 3,
+            helpUsed = 0,
+            items = (1..itemCount).map { index ->
+                BrainyPalChildPracticeTaskItem(
+                    itemId = "dictation_$index",
+                    prompt = "word_$index",
+                    result = if (confirmationStatus == "unconfirmed") {
+                        "needs_manual_review"
+                    } else {
+                        "correct"
+                    },
+                    ocrEvidence = BrainyPalDictationOcrEvidence(
+                        imageRef = "https://placehold.co/800x1000/png",
+                        recognizedText = recognizedText,
+                        confidence = confidence,
+                        boundingBox = BrainyPalDictationOcrBoundingBox(
+                            x = 0.18f,
+                            y = 0.38f,
+                            width = 0.42f,
+                            height = 0.1f,
+                        ),
+                        confirmationStatus = confirmationStatus,
+                        errorAttribution = errorAttribution,
+                    ),
+                )
+            },
+        )
+    }
+
+    private fun recitationTask(): BrainyPalChildPracticeTaskDetail {
+        return BrainyPalChildPracticeTaskDetail(
+            taskId = "recitation-task",
+            title = "背诵任务",
+            taskType = "recitation",
+            status = "in_progress",
+            helpLimit = 2,
+            helpUsed = 0,
+            items = listOf(
+                BrainyPalChildPracticeTaskItem(
+                    itemId = "recitation_1",
+                    prompt = "春天来了，小草从土里探出头。",
+                )
+            ),
+        )
+    }
+
+    private fun strategy(
+        versionId: String = "strategy_review_prompt_001",
+        status: String = "draft",
+    ): BrainyPalStrategyVersion {
+        return BrainyPalStrategyVersion(
+            versionId = versionId,
+            scope = "review_prompt",
+            status = status,
+            parentGoalText = "这周朗读多鼓励，提示慢一点，不直接说答案。",
+            childFacingGoal = "我会先鼓励你说出思路，再给一点点方向。",
+            rationale = "来自家长确认的引导方向。",
+            evidenceRefs = listOf("parent_chat://strategy_1"),
+            createdAt = "2026-06-14T09:00:00+08:00",
+            activeFrom = "2026-06-14T09:00:00+08:00",
+            activeUntil = "2026-06-21T09:00:00+08:00",
+        )
+    }
+}

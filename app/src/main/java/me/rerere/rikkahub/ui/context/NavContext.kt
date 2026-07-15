@@ -1,17 +1,24 @@
 package me.rerere.rikkahub.ui.context
 
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.navigation3.runtime.NavKey
 import me.rerere.rikkahub.Screen
-import me.rerere.rikkahub.brainypal.BrainyPalChildModePolicy
+import me.rerere.rikkahub.brainypal.shared.BrainyPalChildModePolicy
 
 class Navigator(
     private val backStack: MutableList<NavKey>,
     private val childModePolicy: BrainyPalChildModePolicy = BrainyPalChildModePolicy.disabled(),
 ) {
+    var blockedRouteNotice by mutableStateOf<String?>(null)
+        private set
+
     fun navigate(screen: Screen, builder: NavigateOptionsBuilder.() -> Unit = {}) {
         val decision = childModePolicy.evaluateScreen(screen)
         if (!decision.allowed) {
+            blockedRouteNotice = CHILD_BLOCKED_NOTICE
             navigateToChildSafeFallback(decision.fallbackScreen)
             return
         }
@@ -38,6 +45,7 @@ class Navigator(
     fun clearAndNavigate(screen: Screen) {
         val decision = childModePolicy.evaluateScreen(screen)
         if (!decision.allowed) {
+            blockedRouteNotice = CHILD_BLOCKED_NOTICE
             backStack.clear()
             backStack.add(decision.fallbackScreen ?: Screen.Setting)
             return
@@ -51,11 +59,19 @@ class Navigator(
         if (backStack.size > 1) backStack.removeLastOrNull()
     }
 
+    fun clearBlockedRouteNotice() {
+        blockedRouteNotice = null
+    }
+
     private fun navigateToChildSafeFallback(fallbackScreen: Screen?) {
         val fallback = fallbackScreen ?: Screen.Setting
         if (backStack.lastOrNull() != fallback) {
             backStack.add(fallback)
         }
+    }
+
+    private companion object {
+        const val CHILD_BLOCKED_NOTICE = "这个页面需要家长处理，已经回到 BrainyPal 首页。"
     }
 }
 

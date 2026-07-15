@@ -1,0 +1,1 @@
+{"step_id": "checkpoint", "task_id": "RH-5", "summary": "完成 RikkaHub #5 父母端最小供给闭环：新增 Parent API/factory、听写下发、错题复习供给、任务状态/OCR 确认 UI；实测父母端 UI 下发听写后孩子端可见，OCR 归因确认写回服务端，并修复已确认 OCR 归因仍重复显示按钮的问题。验证：:app:testDebugUnitTest、:app:assembleDebug、BrainyPal 相关 pytest、模拟器安装与 UI 点验。", "payload": {}, "id": "L1", "timestamp": "2026-06-13T12:56:01.771929+00:00"}
