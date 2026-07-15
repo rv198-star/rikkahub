@@ -47,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -546,7 +547,7 @@ private fun PracticeTaskDetailContent(
     }
     var oralRereadCount by remember(detail.taskId) { mutableStateOf(0) }
     var oralPhase by remember(detail.taskId) { mutableStateOf(BrainyPalOralTaskPhase.Reading) }
-    var oralSentenceIndex by remember(detail.taskId) { mutableStateOf(0) }
+    var oralSentenceIndex by remember(detail.taskId) { mutableIntStateOf(0) }
     var oralSentenceRevealed by remember(detail.taskId) { mutableStateOf(false) }
     var oralSourcePeek by remember(detail.taskId) { mutableStateOf(false) }
     var oralReflectionUnlocked by remember(detail.taskId) { mutableStateOf(false) }
