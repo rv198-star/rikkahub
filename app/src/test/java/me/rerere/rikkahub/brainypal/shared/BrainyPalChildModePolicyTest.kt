@@ -15,46 +15,34 @@ import kotlin.uuid.Uuid
 
 class BrainyPalChildModePolicyTest {
     @Test
-    fun `new development installs start configured for current Agent Service`() {
+    fun `new installs require parent connection and pin setup`() {
         val settings = Settings()
 
-        assertEquals("http://192.168.5.80:8000/rikka/v1", settings.brainyPalChildConnection.baseUrl)
-        assertEquals("brainypal-local", settings.brainyPalChildConnection.apiKey)
-        assertTrue(settings.brainyPalChildConnection.isConfigured())
-
-        val managementPin = requireNotNull(settings.brainyPalManagementPin)
-        assertTrue(managementPin.verify("123456"))
-        assertFalse(managementPin.verify("000000"))
+        assertEquals("", settings.brainyPalChildConnection.baseUrl)
+        assertEquals("", settings.brainyPalChildConnection.apiKey)
+        assertFalse(settings.brainyPalChildConnection.isConfigured())
+        assertEquals(null, settings.brainyPalManagementPin)
     }
 
     @Test
-    fun `development defaults repair empty persisted child connection and missing pin`() {
-        val connection = BrainyPalChildModePolicy.developmentConnectionOverride(
-            BrainyPalChildConnectionConfig(baseUrl = "", apiKey = "")
-        )
-        val managementPin = BrainyPalChildModePolicy.developmentManagementPinOverride(null)
+    fun `missing persisted child connection restores to unconfigured state`() {
+        val connection = BrainyPalChildModePolicy.restoreConnection(null)
 
-        assertEquals("http://192.168.5.80:8000/rikka/v1", connection.baseUrl)
-        assertEquals("brainypal-local", connection.apiKey)
-        assertTrue(managementPin.verify("123456"))
+        assertEquals("", connection.baseUrl)
+        assertEquals("", connection.apiKey)
+        assertFalse(connection.isConfigured())
     }
 
     @Test
-    fun `development defaults override persisted child connection and pin for packaged environment`() {
-        val connection = BrainyPalChildModePolicy.developmentConnectionOverride(
-            BrainyPalChildConnectionConfig(
-                baseUrl = "http://192.168.1.20:8000/rikka/v1",
-                apiKey = "old-local-key",
-            )
+    fun `persisted child connection is preserved across process restoration`() {
+        val persisted = BrainyPalChildConnectionConfig(
+            baseUrl = "https://brainypal.example/rikka/v1",
+            apiKey = "saved-family-key",
         )
-        val managementPin = BrainyPalChildModePolicy.developmentManagementPinOverride(
-            BrainyPalChildModePolicy.createManagementPin("654321", salt = "old-salt")
-        )
+        val restored = BrainyPalChildModePolicy.restoreConnection(persisted)
 
-        assertEquals("http://192.168.5.80:8000/rikka/v1", connection.baseUrl)
-        assertEquals("brainypal-local", connection.apiKey)
-        assertTrue(managementPin.verify("123456"))
-        assertFalse(managementPin.verify("654321"))
+        assertEquals(persisted, restored)
+        assertTrue(restored.isConfigured())
     }
 
     @Test
@@ -154,6 +142,10 @@ class BrainyPalChildModePolicyTest {
             assistants = listOf(persistedAssistant),
             chatModelId = DEFAULT_AUTO_MODEL_ID,
             enableWebSearch = true,
+            brainyPalChildConnection = BrainyPalChildConnectionConfig(
+                baseUrl = "https://brainypal.example/rikka/v1",
+                apiKey = "saved-family-key",
+            ),
         ).withBrainyPalChildModeDefaults()
 
         val provider = settings.providers.single()
@@ -161,7 +153,7 @@ class BrainyPalChildModePolicyTest {
 
         assertTrue(provider is ProviderSetting.OpenAI)
         assertEquals("BrainyPal", provider.name)
-        assertEquals("http://192.168.5.80:8000/rikka/v1", (provider as ProviderSetting.OpenAI).baseUrl)
+        assertEquals("https://brainypal.example/rikka/v1", (provider as ProviderSetting.OpenAI).baseUrl)
         assertEquals("brainypal-child", model?.modelId)
         assertEquals(model?.id, settings.assistants.single().chatModelId)
         assertEquals(model?.id, settings.chatModelId)

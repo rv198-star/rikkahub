@@ -19,12 +19,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -33,7 +36,6 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.BubbleChatQuestion
 import me.rerere.hugeicons.stroke.Refresh03
-import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.Sparkles
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.brainypal.child.BrainyPalChildHomeState
@@ -69,7 +71,7 @@ object BrainyPalHomePageVisualSemantics {
             "primary_actions",
             "review_offer",
             "today_tasks",
-            "grownup_gate",
+            "stable_navigation",
         ),
         courageStationSectionId = "yongqi_station",
         todayTaskSectionId = "today_tasks",
@@ -88,9 +90,29 @@ fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
     val navController = LocalNavController.current
     val state by vm.state.collectAsStateWithLifecycle()
     val visualSemantics = BrainyPalHomePageVisualSemantics.default
+    val successState = (state as? UiState.Success)?.data
+    val reviewOfferKey = successState?.reviewOffer?.event?.let { event ->
+        "${event.relatedQuestionId}:${event.strategyVersionId}"
+    }
+    val blockedRouteNotice = navController.blockedRouteNotice
+    var dismissedReviewOfferKey by rememberSaveable { mutableStateOf<String?>(null) }
 
-    Scaffold(
-        topBar = {
+    BrainyPalChildNavigationScaffold(
+        selectedDestination = BrainyPalChildDestination.Home,
+        askEnabled = successState?.workbench?.configured == true,
+        practiceEnabled = successState?.workbench?.configured == true,
+        onNavigate = { destination ->
+            when (destination) {
+                BrainyPalChildDestination.Home -> Unit
+                BrainyPalChildDestination.Ask -> {
+                    successState?.workbench?.chatAction?.target?.let(navController::navigate)
+                }
+                BrainyPalChildDestination.Practice -> navController.navigate(Screen.BrainyPalPractice)
+            }
+        },
+    ) {
+        Scaffold(
+            topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(BrainyPalTokens.stationName) },
                 navigationIcon = {
@@ -107,9 +129,9 @@ fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
                 scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(),
             )
         },
-        containerColor = MaterialTheme.colorScheme.background,
-    ) { innerPadding ->
-        when (val current = state) {
+            containerColor = MaterialTheme.colorScheme.background,
+        ) { innerPadding ->
+            when (val current = state) {
             UiState.Loading,
             UiState.Idle -> {
                 Box(
@@ -127,6 +149,10 @@ fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     innerPadding = innerPadding,
                     state = null,
                     errorMessage = current.error.message ?: "暂时连不上 BrainyPal，可以稍后重试",
+                    reviewDismissed = false,
+                    onDismissReview = {},
+                    blockedRouteNotice = blockedRouteNotice,
+                    onDismissBlockedRoute = navController::clearBlockedRouteNotice,
                     onRefresh = vm::refresh,
                     onNavigate = { navController.navigate(it) },
                 )
@@ -137,9 +163,14 @@ fun BrainyPalHomePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     innerPadding = innerPadding,
                     state = current.data,
                     errorMessage = current.data.errorMessage,
+                    reviewDismissed = reviewOfferKey != null && dismissedReviewOfferKey == reviewOfferKey,
+                    onDismissReview = { dismissedReviewOfferKey = reviewOfferKey },
+                    blockedRouteNotice = blockedRouteNotice,
+                    onDismissBlockedRoute = navController::clearBlockedRouteNotice,
                     onRefresh = vm::refresh,
                     onNavigate = { navController.navigate(it) },
                 )
+            }
             }
         }
     }
@@ -150,6 +181,10 @@ private fun BrainyPalHomeContent(
     innerPadding: PaddingValues,
     state: BrainyPalChildHomeState?,
     errorMessage: String?,
+    reviewDismissed: Boolean,
+    onDismissReview: () -> Unit,
+    blockedRouteNotice: String?,
+    onDismissBlockedRoute: () -> Unit,
     onRefresh: () -> Unit,
     onNavigate: (Screen) -> Unit,
 ) {
@@ -159,10 +194,29 @@ private fun BrainyPalHomeContent(
         contentPadding = innerPadding + PaddingValues(BrainyPalChildTheme.pagePadding),
         verticalArrangement = Arrangement.spacedBy(BrainyPalChildTheme.sectionSpacing),
     ) {
+        if (blockedRouteNotice != null) {
+            item {
+                DismissibleNoticeCard(
+                    message = blockedRouteNotice,
+                    onDismiss = onDismissBlockedRoute,
+                )
+            }
+        }
+
         if (state != null) {
+            if (!state.workbench.configured) {
+                item {
+                    RecoveryCard(
+                        message = "请家长检查连接",
+                        onRefresh = onRefresh,
+                    )
+                }
+                return@LazyColumn
+            }
+
             item {
                 BrainyPalCompanionCard(
-                    configured = state.workbench.configured,
+                    configured = true,
                     practiceSummary = state.workbench.practiceSummary,
                 )
             }
@@ -195,38 +249,23 @@ private fun BrainyPalHomeContent(
 
             item {
                 PrimaryActionStack(
-                    primaryLabel = state.workbench.chatAction.label,
-                    secondaryLabel = state.workbench.practiceAction.label,
-                    onPrimary = { onNavigate(state.workbench.chatAction.target) },
-                    onSecondary = { onNavigate(state.workbench.practiceAction.target) },
+                    primaryLabel = state.workbench.primaryAction.label,
+                    secondaryLabel = state.workbench.secondaryAction.label,
+                    primaryIsPractice = state.workbench.primaryAction.target == Screen.BrainyPalPractice,
+                    secondaryIsPractice = state.workbench.secondaryAction.target == Screen.BrainyPalPractice,
+                    onPrimary = { onNavigate(state.workbench.primaryAction.target) },
+                    onSecondary = { onNavigate(state.workbench.secondaryAction.target) },
                 )
             }
 
-            if (state.workbench.showReviewOffer) {
+            if (state.workbench.showReviewOffer && !reviewDismissed) {
                 item {
-                    CardGroup(
-                        title = { Text("复习建议") },
-                    ) {
-                        item(
-                            leadingContent = {
-                                Icon(
-                                    imageVector = HugeIcons.Book03,
-                                    contentDescription = null,
-                                    tint = BrainyPalChildTheme.amberText,
-                                )
-                            },
-                            headlineContent = { Text(state.workbench.reviewMessage) },
-                            supportingContent = { Text("用一小步把记忆接回来") },
-                            trailingContent = {
-                                Text(
-                                    text = state.workbench.reviewAction.label,
-                                    color = BrainyPalChildTheme.amberText,
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            },
-                            onClick = { onNavigate(state.workbench.reviewAction.target) },
-                        )
-                    }
+                    ReviewOfferCard(
+                        message = state.workbench.reviewMessage,
+                        actionLabel = state.workbench.reviewAction.label,
+                        onAccept = { onNavigate(state.workbench.reviewAction.target) },
+                        onDismiss = onDismissReview,
+                    )
                 }
             }
 
@@ -252,39 +291,6 @@ private fun BrainyPalHomeContent(
                 }
             }
 
-            item {
-                CardGroup(
-                    title = { Text("大人设置") },
-                ) {
-                    item(
-                        leadingContent = {
-                            Icon(
-                                imageVector = HugeIcons.ServerStack01,
-                                contentDescription = null,
-                                tint = BrainyPalChildTheme.cyanAccent,
-                            )
-                        },
-                        headlineContent = { Text("连接和作业下发") },
-                        supportingContent = {
-                            Text(
-                                if (state.connection.isConfigured()) {
-                                    "需要大人 PIN 才能进入工作台"
-                                } else {
-                                    "请大人先连接 BrainyPal 服务"
-                                }
-                            )
-                        },
-                        trailingContent = {
-                            Text(
-                                text = "进入",
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                        },
-                        onClick = { onNavigate(Screen.BrainyPalConnection) },
-                    )
-                }
-            }
         }
 
         val recoveryMessage = BrainyPalChildUiText.homeErrorRecovery(errorMessage)
@@ -293,7 +299,6 @@ private fun BrainyPalHomeContent(
                 RecoveryCard(
                     message = recoveryMessage,
                     onRefresh = onRefresh,
-                    onSettings = { onNavigate(Screen.BrainyPalConnection) },
                 )
             }
         }
@@ -362,6 +367,8 @@ private fun BrainyPalCompanionCard(
 private fun PrimaryActionStack(
     primaryLabel: String,
     secondaryLabel: String,
+    primaryIsPractice: Boolean,
+    secondaryIsPractice: Boolean,
     onPrimary: () -> Unit,
     onSecondary: () -> Unit,
 ) {
@@ -375,7 +382,7 @@ private fun PrimaryActionStack(
                 .heightIn(min = 56.dp),
             onClick = onPrimary,
         ) {
-            Icon(HugeIcons.BubbleChatQuestion, null)
+            Icon(if (primaryIsPractice) HugeIcons.Book03 else HugeIcons.BubbleChatQuestion, null)
             Text(
                 text = primaryLabel,
                 modifier = Modifier.padding(start = 8.dp),
@@ -387,7 +394,7 @@ private fun PrimaryActionStack(
                 .heightIn(min = 52.dp),
             onClick = onSecondary,
         ) {
-            Icon(HugeIcons.Book03, null)
+            Icon(if (secondaryIsPractice) HugeIcons.Book03 else HugeIcons.BubbleChatQuestion, null)
             Text(
                 text = secondaryLabel,
                 modifier = Modifier.padding(start = 8.dp),
@@ -397,10 +404,69 @@ private fun PrimaryActionStack(
 }
 
 @Composable
+private fun ReviewOfferCard(
+    message: String,
+    actionLabel: String,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = BrainyPalChildTheme.gentleFocusContainer),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("复习建议", style = MaterialTheme.typography.labelLarge)
+            Text(message, style = MaterialTheme.typography.titleMedium)
+            Text(
+                "用一小步把记忆接回来",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                onClick = onAccept,
+            ) {
+                Icon(HugeIcons.Book03, null)
+                Text(actionLabel, modifier = Modifier.padding(start = 8.dp))
+            }
+            TextButton(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                onClick = onDismiss,
+            ) {
+                Text("暂时跳过")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DismissibleNoticeCard(
+    message: String,
+    onDismiss: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(message, style = MaterialTheme.typography.bodyLarge)
+            TextButton(
+                modifier = Modifier.heightIn(min = 48.dp),
+                onClick = onDismiss,
+            ) {
+                Text("知道了")
+            }
+        }
+    }
+}
+
+@Composable
 private fun RecoveryCard(
     message: String,
     onRefresh: () -> Unit,
-    onSettings: () -> Unit,
 ) {
     Card {
         Column(
@@ -423,18 +489,6 @@ private fun RecoveryCard(
                 Icon(HugeIcons.Refresh03, null)
                 Text(
                     text = "刷新",
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-            OutlinedButton(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-                onClick = onSettings,
-            ) {
-                Icon(HugeIcons.ServerStack01, null)
-                Text(
-                    text = "家长检查服务",
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }

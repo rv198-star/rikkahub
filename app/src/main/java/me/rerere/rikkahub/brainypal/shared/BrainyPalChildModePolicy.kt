@@ -129,39 +129,15 @@ class BrainyPalChildModePolicy private constructor(
         val BRAINYPAL_CHILD_ASSISTANT_ID: Uuid = Uuid.parse("4e4ec8a1-5f6b-4c8c-bf45-e0a8ed85d6dc")
         val BRAINYPAL_CHILD_MODEL_ID: Uuid = Uuid.parse("179e5543-df10-43d4-9a68-a1a609f8e7ea")
         const val BRAINYPAL_CHILD_MODEL_NAME = "brainypal-child"
-        const val DEVELOPMENT_DEFAULT_BASE_URL = "http://192.168.5.80:8000/rikka/v1"
-        const val DEVELOPMENT_DEFAULT_API_KEY = "brainypal-local"
-        private const val DEVELOPMENT_DEFAULT_MANAGEMENT_PIN = "123456"
-        private const val DEVELOPMENT_DEFAULT_MANAGEMENT_PIN_SALT = "brainypal-dev-management-pin"
 
         fun enabled(): BrainyPalChildModePolicy = BrainyPalChildModePolicy(active = true)
 
         fun disabled(): BrainyPalChildModePolicy = BrainyPalChildModePolicy(active = false)
 
-        fun developmentDefaultConnection(): BrainyPalChildConnectionConfig {
-            return BrainyPalChildConnectionConfig(
-                baseUrl = DEVELOPMENT_DEFAULT_BASE_URL,
-                apiKey = DEVELOPMENT_DEFAULT_API_KEY,
-            )
-        }
-
-        fun developmentDefaultManagementPin(): BrainyPalManagementPin {
-            return createManagementPin(
-                DEVELOPMENT_DEFAULT_MANAGEMENT_PIN,
-                salt = DEVELOPMENT_DEFAULT_MANAGEMENT_PIN_SALT,
-            )
-        }
-
-        @Suppress("UNUSED_PARAMETER")
-        fun developmentConnectionOverride(
+        fun restoreConnection(
             persistedConfig: BrainyPalChildConnectionConfig?,
         ): BrainyPalChildConnectionConfig {
-            return developmentDefaultConnection()
-        }
-
-        @Suppress("UNUSED_PARAMETER")
-        fun developmentManagementPinOverride(persistedPin: BrainyPalManagementPin?): BrainyPalManagementPin {
-            return developmentDefaultManagementPin()
+            return persistedConfig ?: BrainyPalChildConnectionConfig()
         }
 
         fun brainyPalProvider(config: BrainyPalChildConnectionConfig): ProviderSetting.OpenAI {

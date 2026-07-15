@@ -117,6 +117,7 @@ fun ChatMessage(
     onClearTranslation: (UIMessage) -> Unit = {},
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
+    restrictedMode: Boolean = false,
 ) {
     val message = node.messages[node.selectIndex]
     val settings = LocalSettings.current.displaySetting
@@ -136,6 +137,13 @@ fun ChatMessage(
         horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        if (restrictedMode && !message.parts.isEmptyUIMessage()) {
+            Text(
+                text = if (message.role == MessageRole.USER) "你" else "BrainyPal",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
         if (!message.parts.isEmptyUIMessage()) {
             Row(
                 modifier = Modifier
@@ -202,17 +210,20 @@ fun ChatMessage(
                         showActionsSheet = true
                     },
                     onTranslate = onTranslate,
-                    onClearTranslation = onClearTranslation
+                    onClearTranslation = onClearTranslation,
+                    restrictedMode = restrictedMode,
                 )
             }
         }
 
         ProvideTextStyle(textStyle) {
-            ChatMessageNerdLine(message = message)
+            if (!restrictedMode) {
+                ChatMessageNerdLine(message = message)
+            }
         }
 
     }
-    if (showActionsSheet) {
+    if (showActionsSheet && !restrictedMode) {
         ChatMessageActionsSheet(
             message = message,
             onEdit = onEdit,

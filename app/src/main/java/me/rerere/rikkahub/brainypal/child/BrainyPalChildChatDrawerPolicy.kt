@@ -8,6 +8,7 @@ enum class BrainyPalChildChatTopStartAction {
 }
 
 data class BrainyPalChildChatDrawerLayout(
+    val mountConversationDrawer: Boolean,
     val showConversationHistory: Boolean,
     val showHomeReturnAction: Boolean,
     val showFooterHomeShortcut: Boolean,
@@ -22,10 +23,11 @@ data class BrainyPalChildChatDrawerLayout(
 object BrainyPalChildChatDrawerPolicy {
     fun layoutFor(childMode: Boolean): BrainyPalChildChatDrawerLayout {
         return BrainyPalChildChatDrawerLayout(
-            showConversationHistory = true,
-            showHomeReturnAction = childMode,
+            mountConversationDrawer = !childMode,
+            showConversationHistory = !childMode,
+            showHomeReturnAction = false,
             showFooterHomeShortcut = false,
-            showTopBarHistoryAction = childMode,
+            showTopBarHistoryAction = false,
             allowConversationMaintenanceActions = !childMode,
             homeReturnTarget = Screen.BrainyPalHome,
             homeReturnLabel = "返回 BrainyPal",

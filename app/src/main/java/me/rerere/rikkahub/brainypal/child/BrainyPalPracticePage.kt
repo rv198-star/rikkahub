@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -40,6 +41,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,7 +50,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
@@ -124,6 +129,7 @@ import me.rerere.rikkahub.ui.hooks.CustomTtsState
 import me.rerere.rikkahub.brainypal.child.theme.BrainyPalChildTheme
 import me.rerere.rikkahub.brainypal.shared.BrainyPalDictationSpeechPlan
 import me.rerere.rikkahub.utils.UiState
+import me.rerere.rikkahub.utils.base64Encode
 import me.rerere.rikkahub.utils.plus
 import java.io.File
 import org.koin.androidx.compose.koinViewModel
@@ -133,9 +139,24 @@ fun BrainyPalPracticePage(vm: BrainyPalHomeVM = koinViewModel()) {
     val navController = LocalNavController.current
     val state by vm.state.collectAsStateWithLifecycle()
     val practiceDetailState by vm.practiceDetailState.collectAsStateWithLifecycle()
+    val successState = (state as? UiState.Success)?.data
 
-    Scaffold(
-        topBar = {
+    BrainyPalChildNavigationScaffold(
+        selectedDestination = BrainyPalChildDestination.Practice,
+        askEnabled = successState?.workbench?.configured == true,
+        practiceEnabled = successState?.workbench?.configured == true,
+        onNavigate = { destination ->
+            when (destination) {
+                BrainyPalChildDestination.Home -> navController.navigate(Screen.BrainyPalHome)
+                BrainyPalChildDestination.Ask -> {
+                    successState?.workbench?.chatAction?.target?.let(navController::navigate)
+                }
+                BrainyPalChildDestination.Practice -> Unit
+            }
+        },
+    ) {
+        Scaffold(
+            topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text("今日任务") },
                 navigationIcon = { BackButton() },
@@ -143,9 +164,9 @@ fun BrainyPalPracticePage(vm: BrainyPalHomeVM = koinViewModel()) {
                 scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(),
             )
         },
-        containerColor = MaterialTheme.colorScheme.background,
-    ) { innerPadding ->
-        when (val current = state) {
+            containerColor = MaterialTheme.colorScheme.background,
+        ) { innerPadding ->
+            when (val current = state) {
             UiState.Loading,
             UiState.Idle -> {
                 Box(
@@ -168,6 +189,7 @@ fun BrainyPalPracticePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     onRefresh = vm::refresh,
                     onSelectTask = vm::selectPracticeTask,
                     onCloseTask = vm::closePracticeTask,
+                    onSelectItem = vm::selectPracticeItem,
                     onUpdateDraft = vm::updatePracticeDraft,
                     onSaveAnswer = vm::savePracticeAnswer,
                     onRequestHelp = vm::requestPracticeHelp,
@@ -191,6 +213,7 @@ fun BrainyPalPracticePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     onRefresh = vm::refresh,
                     onSelectTask = vm::selectPracticeTask,
                     onCloseTask = vm::closePracticeTask,
+                    onSelectItem = vm::selectPracticeItem,
                     onUpdateDraft = vm::updatePracticeDraft,
                     onSaveAnswer = vm::savePracticeAnswer,
                     onRequestHelp = vm::requestPracticeHelp,
@@ -202,6 +225,7 @@ fun BrainyPalPracticePage(vm: BrainyPalHomeVM = koinViewModel()) {
                     onConfirmOcrEvidence = vm::confirmDictationOcrEvidence,
                     onInterpretVoiceCommand = vm::interpretVoiceCommand,
                 )
+            }
             }
         }
     }
@@ -217,6 +241,7 @@ private fun BrainyPalPracticeContent(
     onRefresh: () -> Unit,
     onSelectTask: (String) -> Unit,
     onCloseTask: () -> Unit,
+    onSelectItem: (Int) -> Unit,
     onUpdateDraft: (String, String, String) -> Unit,
     onSaveAnswer: (String, String, String, String) -> Unit,
     onRequestHelp: (String, String, String) -> Unit,
@@ -267,10 +292,10 @@ private fun BrainyPalPracticeContent(
         if (!state.workbench.configured) {
             item {
                 PracticeEmptyCard(
-                    headline = "需要家长配置 BrainyPal",
-                    supporting = "配置后这里会显示今天的任务",
-                    primaryLabel = "配置连接",
-                    onPrimary = { onNavigate(Screen.BrainyPalConnection) },
+                    headline = "请家长检查连接",
+                    supporting = "连接恢复后，这里会显示今天的任务",
+                    primaryLabel = "重试",
+                    onPrimary = onRefresh,
                 )
             }
             return@LazyColumn
@@ -305,19 +330,31 @@ private fun BrainyPalPracticeContent(
                 )
             }
         } else {
-            item {
-                CardGroup(
-                    title = { Text("今日任务") },
-                ) {
-                    state.practiceTasks.forEach { task ->
-                        taskItem(
-                            task = task,
-                            selected = practiceDetailState.selectedTaskId == task.taskId,
-                            onClick = { onSelectTask(task.taskId) },
-                        )
-                    }
-                }
+            val continueTasks = state.practiceTasks.filter {
+                it.needsMoreEffort || it.status in setOf("in_progress", "paused", "accepted")
             }
+            val pendingTasks = state.practiceTasks.filter {
+                !it.needsMoreEffort && it.status in setOf("available", "pending", "assigned")
+            }
+            val completedTasks = state.practiceTasks - continueTasks.toSet() - pendingTasks.toSet()
+            practiceTaskGroup(
+                title = "继续做",
+                tasks = continueTasks,
+                selectedTaskId = practiceDetailState.selectedTaskId,
+                onSelectTask = onSelectTask,
+            )
+            practiceTaskGroup(
+                title = "待开始",
+                tasks = pendingTasks,
+                selectedTaskId = practiceDetailState.selectedTaskId,
+                onSelectTask = onSelectTask,
+            )
+            practiceTaskGroup(
+                title = "已完成",
+                tasks = completedTasks,
+                selectedTaskId = practiceDetailState.selectedTaskId,
+                onSelectTask = onSelectTask,
+            )
         }
 
         if (practiceDetailState.selectedTaskId != null) {
@@ -325,9 +362,11 @@ private fun BrainyPalPracticeContent(
             item {
                 PracticeTaskDetailPane(
                     connection = state.connection,
+                    chatTarget = state.workbench.chatAction.target,
                     detailState = practiceDetailState,
                     onRetry = { onSelectTask(selectedTaskId) },
                     onClose = onCloseTask,
+                    onSelectItem = onSelectItem,
                     onNavigate = onNavigate,
                     onUpdateDraft = onUpdateDraft,
                     onSaveAnswer = onSaveAnswerFromUi,
@@ -363,9 +402,11 @@ private fun BrainyPalPracticeContent(
 @Composable
 private fun PracticeTaskDetailPane(
     connection: BrainyPalChildConnectionConfig,
+    chatTarget: Screen,
     detailState: BrainyPalPracticeTaskDetailState,
     onRetry: () -> Unit,
     onClose: () -> Unit,
+    onSelectItem: (Int) -> Unit,
     onNavigate: (Screen) -> Unit,
     onUpdateDraft: (String, String, String) -> Unit,
     onSaveAnswer: (String, String, String, String) -> Unit,
@@ -406,6 +447,7 @@ private fun PracticeTaskDetailPane(
         is UiState.Success -> {
             PracticeTaskDetailContent(
                 connection = connection,
+                chatTarget = chatTarget,
                 detail = detail.data,
                 drafts = detailState.drafts,
                 helpHint = detailState.helpHint,
@@ -413,7 +455,9 @@ private fun PracticeTaskDetailPane(
                 oralAudioRefs = detailState.oralAudioRefs,
                 actionInProgress = detailState.actionInProgress,
                 actionStatus = detailState.actionStatus,
+                selectedItemIndex = detailState.selectedItemIndex,
                 onClose = onClose,
+                onSelectItem = onSelectItem,
                 onNavigate = onNavigate,
                 onUpdateDraft = onUpdateDraft,
                 onSaveAnswer = onSaveAnswer,
@@ -433,6 +477,7 @@ private fun PracticeTaskDetailPane(
 @Composable
 private fun PracticeTaskDetailContent(
     connection: BrainyPalChildConnectionConfig,
+    chatTarget: Screen,
     detail: BrainyPalChildPracticeTaskDetail,
     drafts: BrainyPalPracticeDrafts,
     helpHint: BrainyPalPracticeTaskHelpHint?,
@@ -440,7 +485,9 @@ private fun PracticeTaskDetailContent(
     oralAudioRefs: Map<String, String>,
     actionInProgress: Boolean,
     actionStatus: BrainyPalPracticeTaskActionStatus?,
+    selectedItemIndex: Int,
     onClose: () -> Unit,
+    onSelectItem: (Int) -> Unit,
     onNavigate: (Screen) -> Unit,
     onUpdateDraft: (String, String, String) -> Unit,
     onSaveAnswer: (String, String, String, String) -> Unit,
@@ -458,6 +505,10 @@ private fun PracticeTaskDetailContent(
     val isReading = detail.taskType == "reading"
     val isRecitation = detail.taskType == "recitation"
     val isOralTask = isReading || isRecitation
+    val isGenericTask = !isDictation && !isOralTask
+    val currentItemIndex = selectedItemIndex.coerceIn(0, (detail.items.size - 1).coerceAtLeast(0))
+    val currentItem = detail.items.getOrNull(currentItemIndex)
+    var showSubmitSummary by rememberSaveable(detail.taskId) { mutableStateOf(false) }
     val tts = LocalTTSState.current
     val asr = LocalASRState.current
     val asrState by asr.state.collectAsStateWithLifecycle()
@@ -509,6 +560,13 @@ private fun PracticeTaskDetailContent(
         mutableStateOf<Map<String, String>>(emptyMap())
     }
     var cameraOutputFile by remember { mutableStateOf<File?>(null) }
+
+    LaunchedEffect(actionStatus?.error) {
+        if (actionStatus?.error == true) {
+            showSubmitSummary = false
+        }
+    }
+
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         val file = cameraOutputFile
         if (success && file != null) {
@@ -810,7 +868,6 @@ private fun PracticeTaskDetailContent(
 
         PracticeExternalWorkCard(
             detail = detail,
-            connection = connection,
             handoffDisplay = handoffDisplay,
             actionInProgress = actionInProgress,
             onCreateHandoffCode = { onCreateHandoffCode(detail.taskId) },
@@ -1015,25 +1072,89 @@ private fun PracticeTaskDetailContent(
             PracticeAchievementMomentCard(model)
         }
 
-        if (!isOralTask) detail.items.forEachIndexed { index, item ->
+        if (isDictation) {
+            detail.items.forEachIndexed { index, item ->
+                PracticeTaskQuestionCard(
+                    taskId = detail.taskId,
+                    index = index + 1,
+                    total = detail.items.size,
+                    item = item,
+                    draft = drafts.get(item.itemId),
+                    interactionPlan = interactionPlan,
+                    helpMessage = helpHint
+                        ?.takeIf { it.itemId == item.itemId }
+                        ?.message,
+                    remainingHelp = detail.remainingHelp,
+                    canEdit = detail.canEditAttempt,
+                    actionInProgress = actionInProgress,
+                    isDictation = true,
+                    isCurrentDictationItem = dictationSession.isActiveItem(item.itemId),
+                    focusEvidence = false,
+                    onUpdateDraft = onUpdateDraft,
+                    onSaveAnswer = onSaveAnswer,
+                    onRequestHelp = onRequestHelp,
+                )
+            }
+        } else if (isGenericTask && currentItem != null) {
             PracticeTaskQuestionCard(
                 taskId = detail.taskId,
-                index = index + 1,
-                item = item,
-                draft = drafts.get(item.itemId),
+                index = currentItemIndex + 1,
+                total = detail.items.size,
+                item = currentItem,
+                draft = drafts.get(currentItem.itemId),
                 interactionPlan = interactionPlan,
                 helpMessage = helpHint
-                    ?.takeIf { it.itemId == item.itemId }
+                    ?.takeIf { it.itemId == currentItem.itemId }
                     ?.message,
                 remainingHelp = detail.remainingHelp,
                 canEdit = detail.canEditAttempt,
                 actionInProgress = actionInProgress,
-                isDictation = isDictation,
-                isCurrentDictationItem = dictationSession.isActiveItem(item.itemId),
+                isDictation = false,
+                isCurrentDictationItem = false,
+                focusEvidence = currentItem.needsMoreEffort && actionStatus?.error == true,
                 onUpdateDraft = onUpdateDraft,
                 onSaveAnswer = onSaveAnswer,
                 onRequestHelp = onRequestHelp,
             )
+            OutlinedButton(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                onClick = {
+                    val contextualTarget = (chatTarget as? Screen.Chat)?.copy(
+                        text = (
+                            "我在做这道题：${currentItem.prompt}\n" +
+                                "请先帮我理清思路，不要直接给答案。"
+                            ).base64Encode(),
+                    ) ?: chatTarget
+                    onNavigate(contextualTarget)
+                },
+            ) {
+                Icon(HugeIcons.BubbleChatQuestion, contentDescription = null)
+                Text(
+                    text = "和 BrainyPal 说说这题",
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    enabled = currentItemIndex > 0 && !actionInProgress,
+                    onClick = { onSelectItem(currentItemIndex - 1) },
+                ) {
+                    Text("上一题")
+                }
+                FilledTonalButton(
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    enabled = currentItemIndex < detail.items.lastIndex && !actionInProgress,
+                    onClick = { onSelectItem(currentItemIndex + 1) },
+                ) {
+                    Text("下一题")
+                }
+            }
         }
 
         if (detail.result != null) {
@@ -1046,39 +1167,54 @@ private fun PracticeTaskDetailContent(
             )
         }
 
-        Button(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 54.dp),
-            enabled = detail.canSubmit && !actionInProgress && (!isOralTask || oralReflectionUnlocked),
-            onClick = {
-                if (isOralTask) {
-                    val request = oralEvidenceRequest(
-                        detail = detail,
-                        drafts = drafts,
-                        rereadCount = oralRereadCount,
-                        textHiddenDuringAttempt = isRecitation,
-                        audioRefs = oralAudioRefs,
-                    )
-                    if (request != null) {
-                        onSubmitOralEvidence(detail.taskId, request)
-                    } else {
-                        recitationMessage = "先完成一次朗读/背诵，再给自己 1-5 分。"
-                    }
-                } else {
-                    onSubmitTask(detail.taskId)
-                }
-            },
-        ) {
-            Icon(HugeIcons.Tick01, null)
-            Text(
-                text = when {
-                    !detail.canSubmit -> "已提交"
-                    isOralTask && !oralReflectionUnlocked -> "完成后提交"
-                    else -> interactionPlan.submitLabel
-                },
-                modifier = Modifier.padding(start = 8.dp),
+        if (isGenericTask && showSubmitSummary && detail.canSubmit) {
+            PracticeSubmitSummary(
+                detail = detail,
+                drafts = drafts,
+                actionInProgress = actionInProgress,
+                onConfirm = { onSubmitTask(detail.taskId) },
+                onContinue = { showSubmitSummary = false },
             )
+        } else {
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 54.dp),
+                enabled = detail.canSubmit &&
+                    !actionInProgress &&
+                    (!isOralTask || oralReflectionUnlocked),
+                onClick = {
+                    if (isOralTask) {
+                        val request = oralEvidenceRequest(
+                            detail = detail,
+                            drafts = drafts,
+                            rereadCount = oralRereadCount,
+                            textHiddenDuringAttempt = isRecitation,
+                            audioRefs = oralAudioRefs,
+                        )
+                        if (request != null) {
+                            onSubmitOralEvidence(detail.taskId, request)
+                        } else {
+                            recitationMessage = "先完成朗读/背诵并填一个 1-5 分自评，再提交复盘。"
+                        }
+                    } else if (isGenericTask) {
+                        showSubmitSummary = true
+                    } else {
+                        onSubmitTask(detail.taskId)
+                    }
+                },
+            ) {
+                Icon(HugeIcons.Tick01, null)
+                Text(
+                    text = when {
+                        !detail.canSubmit -> "已提交"
+                        isOralTask && !oralReflectionUnlocked -> "完成后提交"
+                        isGenericTask -> "查看并提交"
+                        else -> interactionPlan.submitLabel
+                    },
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
         }
 
         OutlinedButton(
@@ -1180,7 +1316,6 @@ private fun PracticeResultReviewCard(
 @Composable
 private fun PracticeExternalWorkCard(
     detail: BrainyPalChildPracticeTaskDetail,
-    connection: BrainyPalChildConnectionConfig,
     handoffDisplay: BrainyPalPracticeHandoffDisplay?,
     actionInProgress: Boolean,
     onCreateHandoffCode: () -> Unit,
@@ -1222,14 +1357,7 @@ private fun PracticeExternalWorkCard(
             },
             headlineContent = { Text("打印完成") },
             supportingContent = {
-                Text(
-                    "打开打印版 PDF，写完后拍照 OCR 批改。${
-                        BrainyPalPracticeExternalWork.printablePdfUrl(
-                            config = connection,
-                            taskId = detail.taskId,
-                        ).substringAfter("://")
-                    }"
-                )
+                Text("打开打印版 PDF，写完后拍照 OCR 批改。")
             },
             trailingContent = {
                 Icon(HugeIcons.ArrowRight01, contentDescription = null)
@@ -1312,9 +1440,63 @@ private fun PracticeActionStatusCard(status: BrainyPalPracticeTaskActionStatus) 
 }
 
 @Composable
+private fun PracticeSubmitSummary(
+    detail: BrainyPalChildPracticeTaskDetail,
+    drafts: BrainyPalPracticeDrafts,
+    actionInProgress: Boolean,
+    onConfirm: () -> Unit,
+    onContinue: () -> Unit,
+) {
+    val answeredCount = detail.items.count { drafts.get(it.itemId).answer.isNotBlank() }
+    val evidenceCount = detail.items.count { drafts.get(it.itemId).evidence.isNotBlank() }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("提交前看一眼", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "已填写答案 $answeredCount / ${detail.items.size}，" +
+                    "已写下思路或卡点 $evidenceCount / ${detail.items.size}。",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Button(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                enabled = !actionInProgress,
+                onClick = onConfirm,
+            ) {
+                if (actionInProgress) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                } else {
+                    Icon(HugeIcons.Tick01, null)
+                }
+                Text(
+                    text = if (actionInProgress) "正在提交" else "确认提交",
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            TextButton(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                enabled = !actionInProgress,
+                onClick = onContinue,
+            ) {
+                Text("继续检查")
+            }
+        }
+    }
+}
+
+@Composable
 private fun PracticeTaskQuestionCard(
     taskId: String,
     index: Int,
+    total: Int,
     item: BrainyPalChildPracticeTaskItem,
     draft: me.rerere.rikkahub.brainypal.child.BrainyPalPracticeDraft,
     interactionPlan: BrainyPalChildTaskInteractionPlan,
@@ -1324,11 +1506,19 @@ private fun PracticeTaskQuestionCard(
     actionInProgress: Boolean,
     isDictation: Boolean,
     isCurrentDictationItem: Boolean,
+    focusEvidence: Boolean,
     onUpdateDraft: (String, String, String) -> Unit,
     onSaveAnswer: (String, String, String, String) -> Unit,
     onRequestHelp: (String, String, String) -> Unit,
 ) {
     val actionsEnabled = canEdit && !actionInProgress
+    val evidenceFocusRequester = remember(item.itemId) { FocusRequester() }
+
+    LaunchedEffect(focusEvidence, item.itemId) {
+        if (focusEvidence) {
+            evidenceFocusRequester.requestFocus()
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1341,9 +1531,9 @@ private fun PracticeTaskQuestionCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "第 $index 条",
-            color = BrainyPalChildTheme.cyanAccent,
-            style = MaterialTheme.typography.titleSmall,
+                text = if (isDictation) "第 $index 条" else "第 $index / $total 题",
+                color = BrainyPalChildTheme.cyanAccent,
+                style = MaterialTheme.typography.titleSmall,
             )
             Text(
                 text = if (isDictation) {
@@ -1373,7 +1563,7 @@ private fun PracticeTaskQuestionCard(
                 maxLines = 5,
             )
             OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().focusRequester(evidenceFocusRequester),
                 value = draft.evidence,
                 onValueChange = { onUpdateDraft(item.itemId, draft.answer, it) },
                 enabled = canEdit,
@@ -2183,6 +2373,26 @@ private fun me.rerere.rikkahub.ui.components.ui.CardGroupScope.taskItem(
             }
         },
     )
+}
+
+private fun LazyListScope.practiceTaskGroup(
+    title: String,
+    tasks: List<BrainyPalChildPracticeTaskSummary>,
+    selectedTaskId: String?,
+    onSelectTask: (String) -> Unit,
+) {
+    if (tasks.isEmpty()) return
+    item(key = "practice-group-$title") {
+        CardGroup(title = { Text(title) }) {
+            tasks.forEach { task ->
+                taskItem(
+                    task = task,
+                    selected = selectedTaskId == task.taskId,
+                    onClick = { onSelectTask(task.taskId) },
+                )
+            }
+        }
+    }
 }
 
 private suspend fun speakDictationPlan(
